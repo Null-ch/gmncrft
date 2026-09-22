@@ -43,6 +43,9 @@ services:
     volumes:
       - ./data:/data
       - ./mods:/mods:ro
+      # Конфиги модов (сейчас: config/loginsystem.properties) - копируются в /data/config
+      # при каждом старте контейнера, так они не теряются и не расходятся с репозиторием.
+      - ./config:/config:ro
       - ./${FORGE_INSTALLER_FILE:-forge-1.21.1-52.1.16-installer.jar}:/forge-installer.jar:ro
     networks:
       - mc-net

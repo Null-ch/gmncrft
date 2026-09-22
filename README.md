@@ -21,6 +21,7 @@ minecraft-server/
 ├── .env.example                             # шаблон настроек (скопировать в .env)
 ├── .env                                     # реальные настройки (не коммитить! секреты уже сгенерированы)
 ├── mods/                                    # сюда класть .jar моды — см. раздел "Моды" ниже
+├── config/                                  # конфиги модов (loginsystem.properties и т.п.), копируются в /data/config
 ├── data/                                    # мир, конфиги, логи (создаётся автоматически при первом запуске)
 ├── backups/                                 # архивы бэкапов мира
 ├── client-pack.zip                          # собирается scripts/build-client-pack.sh, раздаётся через /client
@@ -171,21 +172,43 @@ docker compose restart mc
 После добавления/замены модов не забудьте пересобрать клиент-пак (раздел 5.1)
 и синхронизировать `mods/` с VPS.
 
-### Мод авторизации: EasyLogin
+### Мод авторизации: LoginSystem
 
-В `mods/` уже лежит [EasyLogin](https://modrinth.com/mod/easylogin) `1.0.2` —
-server-side мод авторизации (`/register <пароль>` при первом входе, затем
-`/login <пароль>` при каждом подключении). Полезен в первую очередь при
-`ONLINE_MODE=false`, чтобы никто не мог зайти под чужим ником без пароля —
-клиентам ничего ставить не нужно, работает "из коробки" с ванильным лаунчером.
+В `mods/` лежит [LoginSystem](https://modrinth.com/mod/loginmod) `2.0` — защита от
+подмены ника при `ONLINE_MODE=false`. Обычные текстовые команды (не числовой PIN,
+как было у промежуточного варианта через datapack), пароли хешируются bcrypt
+(`org.mindrot.jbcrypt`, зашит в jar), блокирует остальные команды до входа.
+
+```
+/register <пароль> <пароль ещё раз>   - регистрация при первом входе (один раз навсегда)
+/login <пароль>                        - вход при каждом следующем подключении
+```
+
+История замен, если интересно почему не предыдущие варианты:
+> ⚠️ Сначала стоял [EasyLogin](https://modrinth.com/mod/easylogin) `1.0.2` — **крашит
+> сервер** при `/register` (не зашивает свою bcrypt-библиотеку в jar, баг подтверждён
+> во всех версиях 1.0.0-1.0.2). Потом — datapack [Auth](https://modrinth.com/datapack/auth)
+> (работал, но пароль там только число через `/trigger`, неудобно).
+
+**Важно:** у мода есть встроенная веб-панель администратора (порт `8080` внутри
+контейнера, наружу не публикуется) с дефолтным паролем `admin123` и отображением
+части паролей игроков в открытом виде — она **намеренно выключена**
+(`config/loginsystem.properties`, `enableWebPanel=false`). Управление игроками — через
+RCON (`scripts/console.sh`) или команды `/register`/`/login` самих игроков.
+`config/` монтируется в контейнер и копируется при каждом старте, так что настройка
+не потеряется и не разъедется с репозиторием.
 
 Применить на VPS:
 
 ```bash
-scp minecraft-server/mods/EasyLogin-forge-1.21.1-1.0.2.jar user@your-vps-ip:~/minecraft-server/mods/
+scp minecraft-server/mods/loginsystem-2.0.jar user@your-vps-ip:~/minecraft-server/mods/
+scp minecraft-server/config/loginsystem.properties user@your-vps-ip:~/minecraft-server/config/
 ssh user@your-vps-ip
-cd minecraft-server && docker compose restart mc
+cd minecraft-server
+rm -f mods/auth-v1.5.1.jar mods/EasyLogin-forge-1.21.1-1.0.2.jar   # старые варианты - удалить
+docker compose up -d   # up, не restart - подхватить новый volume ./config
 docker compose logs -f mc   # проверить, что мод загрузился без ошибок
+bash scripts/build-client-pack.sh   # пересобрать клиент-пак с актуальными модами
 ```
 
 ## 6. Бэкапы
