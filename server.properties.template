@@ -1,0 +1,21 @@
+motd=My Forge 1.21.1 Server
+difficulty=normal
+gamemode=survival
+max-players=20
+view-distance=10
+simulation-distance=10
+spawn-protection=0
+allow-nether=true
+pvp=true
+online-mode=true
+white-list=false
+enforce-whitelist=false
+server-port=25565
+level-name=world
+
+# RCON выключен - управление консолью через console.fifo (см. scripts/console.sh).
+# Включайте enable-rcon только если он реально нужен снаружи systemd-юнита,
+# и не забудьте задать длинный rcon.password.
+enable-rcon=false
+rcon.port=25575
+rcon.password=

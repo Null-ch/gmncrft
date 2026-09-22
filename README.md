@@ -1,30 +1,32 @@
-# Minecraft Forge 1.21.1 Server — деплой на Ubuntu VPS
+# Minecraft Forge 1.21.1 Server — деплой на Ubuntu VPS напрямую из jar (без Docker)
 
-Готовый набор файлов для запуска Minecraft-сервера **Forge 1.21.1** в Docker на базе
-образа [itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server)
-(самый популярный и активно поддерживаемый Docker-образ для Minecraft-серверов).
-Автоматические бэкапы через [itzg/mc-backup](https://github.com/itzg/docker-mc-backup).
+Сервер запускается обычным `java -jar` через systemd, без Docker. Установка выполняется
+официальным Forge-инсталлятором (`forge-*-installer.jar`), который либо уже лежит
+в репозитории, либо скрипт сам скачает нужную версию с maven.minecraftforge.net.
 
 ## Состав репозитория
 
 ```
 minecraft-server/
-├── docker-compose.yml      # сервисы: mc (сервер) + backup (авто-бэкапы)
-├── .env.example             # шаблон настроек (скопировать в .env)
-├── .env                     # реальные настройки (не коммитить! RCON-пароль уже сгенерирован)
-├── mods/                    # сюда класть .jar моды — при старте копируются в /data/mods
-├── data/                    # мир, конфиги, логи (создаётся автоматически при первом запуске)
-├── backups/                 # архивы бэкапов мира
+├── forge-1.21.1-52.1.16-installer.jar   # Forge-инсталлятор (можно не коммитить, см. .gitignore)
+├── server.properties.template            # шаблон настроек сервера
+├── systemd/minecraft.service.template    # шаблон systemd-юнита
 └── scripts/
-    ├── install-docker-ubuntu.sh  # установка Docker + firewall на чистом VPS
-    ├── console.sh                 # консоль сервера (rcon-cli)
-    ├── backup-now.sh               # ручной бэкап
-    └── update.sh                   # обновление образов/версии
+    ├── install-java-ubuntu.sh   # Java 21 + пользователь minecraft + firewall (разово, sudo)
+    ├── setup-server.sh          # установка Forge + systemd-сервис (разово, sudo)
+    ├── console.sh                # отправить команду в консоль сервера
+    ├── backup-now.sh              # архив мира в ./backups
+    └── update-forge.sh            # обновление версии Forge
 ```
 
-## 1. Разовая подготовка VPS (Ubuntu 22.04/24.04)
+После первого запуска `setup-server.sh` в этой же папке появятся: `run.sh`, `libraries/`,
+`world/`, `eula.txt`, `server.properties`, `user_jvm_args.txt`, `console.fifo`,
+`logs/` и т.д. — они попадают в `.gitignore` и не коммитятся.
 
-Скопируйте эту папку на сервер, например через `git`/`scp`/`rsync`:
+## 1. Подготовка VPS (Ubuntu 22.04/24.04)
+
+Скопируйте репозиторий на сервер (вместе с `forge-*-installer.jar`, если он уже скачан
+локально — иначе его скачает `setup-server.sh`):
 
 ```bash
 scp -r minecraft-server user@your-vps-ip:~/
@@ -32,17 +34,16 @@ ssh user@your-vps-ip
 cd minecraft-server
 ```
 
-Установите Docker и откройте нужный порт в firewall:
+Установите Java 21, создайте системного пользователя `minecraft` и откройте порт в firewall:
 
 ```bash
-sudo bash scripts/install-docker-ubuntu.sh
+sudo bash scripts/install-java-ubuntu.sh
 ```
 
-Скрипт ставит Docker Engine + Compose plugin, включает `ufw` и открывает
-`25565/tcp` (игровой порт) и SSH. Порт RCON (`25575`) наружу не открывается —
-он используется только внутри Docker-сети для консоли и бэкапов.
+Открывается только `25565/tcp` (игровой порт) + SSH. Управление консолью идёт локально
+через `console.fifo`, наружу ничего дополнительно не публикуется.
 
-Если у VPS мало RAM (< 6 ГБ), рекомендуется добавить swap:
+Если у VPS мало RAM (< 6 ГБ), добавьте swap:
 
 ```bash
 sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
@@ -50,93 +51,99 @@ sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-## 2. Настройка
-
-Отредактируйте `.env` (или сначала `cp .env.example .env`, если начинаете с нуля):
-
-- `MEMORY` — сколько RAM выделить Java (оставьте VPS минимум 1-1.5 ГБ сверху под ОС/Docker).
-- `RCON_PASSWORD` — уже сгенерирован случайно, менять не обязательно, но не публикуйте его.
-- `WHITELIST` / `OPS` — никнеймы через запятую.
-- `MC_VERSION` / `FORGE_VERSION` — зафиксированы на `1.21.1` / `52.1.0` (рекомендованная
-  версия Forge). Актуальные версии Forge: https://files.minecraftforge.net/net/minecraftforge/forge/index_1.21.1.html
-
-Положите нужные `.jar` моды (и их зависимости, например Forge-совместимые библиотеки)
-в папку `mods/` — они будут автоматически скопированы в контейнер при старте.
-
-## 3. Запуск
+## 2. Установка сервера
 
 ```bash
-docker compose up -d
-docker compose logs -f mc
+sudo bash scripts/setup-server.sh
 ```
 
-Первый запуск займёт несколько минут — скачивается и устанавливается Forge,
-принимается EULA, генерируется мир. Готовность видна по строке `Done (...)! For help, type "help"`.
+Скрипт:
+1. запускает `java -jar forge-*-installer.jar --installServer` (от имени пользователя `minecraft`);
+2. принимает EULA (`eula.txt`);
+3. создаёт `user_jvm_args.txt` с памятью `-Xms2G -Xmx4G` (поменяйте под свой VPS);
+4. создаёт `server.properties` из `server.properties.template`, если его ещё нет;
+5. ставит и включает systemd-юнит `minecraft.service` (автозапуск при загрузке VPS, `Restart=on-failure` при падении).
 
-Сервер слушает `0.0.0.0:25565` — подключайтесь по IP вашего VPS.
+Перед первым реальным запуском стоит проверить `server.properties` (motd, online-mode,
+max-players и т.д.) и `user_jvm_args.txt` (объём памяти).
 
-## 4. Повседневное управление
+## 3. Управление
 
 ```bash
-docker compose ps               # статус контейнеров
-docker compose logs -f mc       # логи сервера
-docker compose restart mc       # перезапуск
-docker compose down             # остановка (данные в ./data сохраняются)
-bash scripts/console.sh         # консоль сервера (RCON), например: op ИмяИгрока
-bash scripts/backup-now.sh      # ручной бэкап прямо сейчас
+systemctl status minecraft         # статус
+journalctl -u minecraft -f         # логи в реальном времени
+sudo systemctl restart minecraft   # перезапуск
+sudo systemctl stop minecraft      # остановка (мир сохраняется - JVM ловит SIGTERM)
+bash scripts/console.sh op Nulls   # команда в консоль сервера
+bash scripts/backup-now.sh         # архив мира прямо сейчас
 ```
 
-Контейнеры подняты с `restart: unless-stopped` — после перезагрузки VPS сервер
-поднимется автоматически вместе с Docker (`systemctl enable docker` уже сделан
-скриптом установки).
+Консоль реализована через именованный канал `console.fifo` (без RCON и без screen/tmux):
+`scripts/console.sh <команда>` дописывает строку в fifo, откуда её читает Java-процесс —
+это то же самое, что ввести команду прямо в консоли сервера.
 
-## 4.1 Whitelist в offline-режиме (ONLINE_MODE=false)
+## 3.1 Whitelist в offline-режиме (online-mode=false)
 
-Если сервер запущен без проверки лицензии Mojang (`ONLINE_MODE=false`, пиратские
-клиенты), **нельзя** задавать `WHITELIST`/`OPS` через `.env` — переменные окружения
-резолвят UUID по лицензионному аккаунту (Mojang/PlayerDB API), а офлайн-сервер
-считает UUID игрока локально по нику (`OfflinePlayer:<ник>`). Эти UUID не совпадают,
-и сервер отклоняет подключение с `You are not white-listed on this server!`,
-даже если ник присутствует в списке.
+Если сервер запущен без проверки лицензии Mojang (`online-mode=false` в
+`server.properties`, пиратские клиенты), **нельзя** добавлять игроков в whitelist до
+их первого реального подключения — команда `whitelist add <ник>` при отсутствии
+игрока в локальном кэше обращается к Mojang API и берёт UUID лицензионного аккаунта,
+который не совпадает с offline-UUID (`OfflinePlayer:<ник>`), которым сервер помечает
+реально подключившегося клиента. Итог — `You are not white-listed`, даже если ник в списке.
 
 Правильный порядок для offline-режима:
 
-1. В `.env`: `ENABLE_WHITELIST=true`, а `WHITELIST=` и `OPS=` оставить пустыми.
-2. Перезапустить: `docker compose up -d`.
-3. Добавить игроков командами прямо в консоли сервера (там UUID считается верно):
+```bash
+bash scripts/console.sh whitelist off
+# -> сразу зайти в игру под нужным ником, whitelist временно выключен
+bash scripts/console.sh whitelist on
+bash scripts/console.sh whitelist add Nulls
+bash scripts/console.sh op Nulls
+```
 
-   ```bash
-   bash scripts/console.sh
-   whitelist add Nulls
-   op Nulls
-   ```
+Пока whitelist выключен, сервер открыт для подключения с любым ником (без авторизации) —
+держите это окно максимально коротким. После этого шага записи в `whitelist.json`
+берутся из локального кэша с верным offline-UUID и переживают перезапуски сервиса.
 
-   Эти команды создают/обновляют `data/whitelist.json` и `data/ops.json` с правильными
-   offline-UUID и сохраняются между перезапусками — повторять их при каждом старте не нужно.
+Если такой сложности хочется избежать — используйте `online-mode=true` (значение по
+умолчанию в `server.properties.template`), тогда обычный `whitelist add <ник>` работает
+сразу, но подключаться смогут только владельцы лицензионных аккаунтов Minecraft.
 
-> Если такой сложности хочется избежать — используйте `ONLINE_MODE=true` (значение
-> по умолчанию в `.env.example`), тогда `WHITELIST=`/`OPS=` из `.env` работают как есть,
-> но подключаться смогут только владельцы лицензионных аккаунтов Minecraft.
+## 4. Бэкапы
 
-## 5. Бэкапы
+`scripts/backup-now.sh` отключает автосейв, форсирует сохранение (`save-all flush`),
+архивирует папку мира (`level-name` из `server.properties`, по умолчанию `world`) в
+`./backups/world-<дата>.tar.gz` и включает автосейв обратно. Для регулярных бэкапов
+добавьте в crontab пользователя root:
 
-Сервис `backup` каждые `BACKUP_INTERVAL` (по умолчанию 24h) делает `save-off` /
-`save-all` / архивацию мира через RCON и кладёт `tar.gz` в `./backups`, храня
-их `PRUNE_BACKUPS_DAYS` дней (по умолчанию 7). Рекомендуется дополнительно
-копировать `./backups` за пределы VPS (например, через `rsync`/`rclone` в облако) —
+```bash
+sudo crontab -e
+# каждый день в 4:00
+0 4 * * * cd /путь/до/minecraft-server && bash scripts/backup-now.sh >> backups/backup.log 2>&1
+```
+
+Рекомендуется дополнительно копировать `./backups` за пределы VPS (rsync/rclone в облако) —
 локальные бэкапы не спасут при потере самого сервера.
 
-Восстановление: остановите сервер (`docker compose down`), замените содержимое
-`./data` на данные из нужного архива бэкапа, снова `docker compose up -d`.
+## 5. Обновление версии Forge
 
-## 6. Обновление версии / модов
+```bash
+FORGE_FULL_VERSION=1.21.1-52.1.20 sudo -E bash scripts/update-forge.sh
+```
 
-1. Обновите `mods/`, при необходимости поменяйте `MC_VERSION`/`FORGE_VERSION` в `.env`.
-2. Выполните `bash scripts/update.sh` — подтянет свежие образы и пересоздаст контейнеры.
+Скачивает нужный инсталлятор с `maven.minecraftforge.net`, останавливает сервис,
+переустанавливает Forge поверх текущих файлов (мир/конфиги не трогает) и запускает заново.
+Актуальные версии: https://files.minecraftforge.net/net/minecraftforge/forge/index_1.21.1.html
+
+## Моды
+
+Кладите `.jar` моды в папку `mods/` в корне репозитория (создаётся автоматически при
+установке Forge) и перезапускайте сервис: `sudo systemctl restart minecraft`.
 
 ## Безопасность
 
-- RCON-порт не публикуется наружу (доступен только внутри Docker-сети).
-- `.env` содержит секрет (`RCON_PASSWORD`) — не коммитьте его в публичный репозиторий
-  (уже добавлен в `.gitignore`).
-- `ONLINE_MODE=true` по умолчанию — проверка лицензии Mojang, не отключайте на публичном сервере.
+- RCON по умолчанию выключен (`enable-rcon=false`) — управление только через локальный
+  `console.fifo`, наружу ничего не торчит кроме игрового порта.
+- `online-mode=true` по умолчанию — проверка лицензии Mojang, не отключайте на публичном
+  сервере без необходимости (см. раздел про whitelist выше).
+- Сервер работает от имени отдельного системного пользователя `minecraft`, не root.

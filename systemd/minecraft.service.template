@@ -1,0 +1,28 @@
+[Unit]
+Description=Minecraft Forge 1.21.1 Server
+After=network.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=__APP_DIR__
+
+# console.fifo - именованный канал для отправки команд в консоль сервера
+# (см. scripts/console.sh) без RCON и без интерактивного screen/tmux.
+ExecStartPre=/usr/bin/env bash -c 'test -p __APP_DIR__/console.fifo || mkfifo -m 600 __APP_DIR__/console.fifo'
+StandardInput=file:__APP_DIR__/console.fifo
+ExecStart=__APP_DIR__/run.sh nogui
+
+# SIGTERM корректно сохраняет мир и останавливает сервер (встроенный shutdown hook JVM),
+# поэтому отдельный ExecStop не нужен - systemd сам пошлёт SIGTERM при stop/restart.
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=minecraft
+
+[Install]
+WantedBy=multi-user.target
