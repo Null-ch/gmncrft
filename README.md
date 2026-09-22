@@ -90,6 +90,34 @@ bash scripts/backup-now.sh      # ручной бэкап прямо сейча�
 поднимется автоматически вместе с Docker (`systemctl enable docker` уже сделан
 скриптом установки).
 
+## 4.1 Whitelist в offline-режиме (ONLINE_MODE=false)
+
+Если сервер запущен без проверки лицензии Mojang (`ONLINE_MODE=false`, пиратские
+клиенты), **нельзя** задавать `WHITELIST`/`OPS` через `.env` — переменные окружения
+резолвят UUID по лицензионному аккаунту (Mojang/PlayerDB API), а офлайн-сервер
+считает UUID игрока локально по нику (`OfflinePlayer:<ник>`). Эти UUID не совпадают,
+и сервер отклоняет подключение с `You are not white-listed on this server!`,
+даже если ник присутствует в списке.
+
+Правильный порядок для offline-режима:
+
+1. В `.env`: `ENABLE_WHITELIST=true`, а `WHITELIST=` и `OPS=` оставить пустыми.
+2. Перезапустить: `docker compose up -d`.
+3. Добавить игроков командами прямо в консоли сервера (там UUID считается верно):
+
+   ```bash
+   bash scripts/console.sh
+   whitelist add Nulls
+   op Nulls
+   ```
+
+   Эти команды создают/обновляют `data/whitelist.json` и `data/ops.json` с правильными
+   offline-UUID и сохраняются между перезапусками — повторять их при каждом старте не нужно.
+
+> Если такой сложности хочется избежать — используйте `ONLINE_MODE=true` (значение
+> по умолчанию в `.env.example`), тогда `WHITELIST=`/`OPS=` из `.env` работают как есть,
+> но подключаться смогут только владельцы лицензионных аккаунтов Minecraft.
+
 ## 5. Бэкапы
 
 Сервис `backup` каждые `BACKUP_INTERVAL` (по умолчанию 24h) делает `save-off` /

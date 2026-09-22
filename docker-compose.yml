@@ -24,6 +24,11 @@ services:
       ALLOW_NETHER: "${ALLOW_NETHER:-true}"
       PVP: "${PVP:-true}"
       ONLINE_MODE: "${ONLINE_MODE:-true}"
+      # WHITELIST/OPS через env резолвят UUID по Mojang/PlayerDB API, что не совпадает
+      # с offline-UUID при ONLINE_MODE=false. Поэтому в offline-режиме whitelist только
+      # включается здесь (ENABLE_WHITELIST), а игроки/операторы добавляются вручную через
+      # консоль (scripts/console.sh -> whitelist add <ник> / op <ник>) - см. README.
+      ENABLE_WHITELIST: "${ENABLE_WHITELIST:-false}"
       WHITELIST: "${WHITELIST:-}"
       OPS: "${OPS:-}"
       ICON: "${ICON:-}"
