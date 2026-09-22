@@ -250,6 +250,25 @@ docker compose logs -f mc   # проверить, что мод загрузил
 Discord-бот печатает его прямо в ответе на `/minecraft backup`/`/minecraft client` и сам
 подставляет его заголовком при скачивании (без формы, минуя её).
 
+> ⚠️ После правки в `.env` любой переменной, которую читает `link-server`
+> (`SERVER_ADDRESS`, `MOTD`, `DOWNLOAD_PASSWORD`, `FORGE_INSTALLER_FILE`) —
+> **`docker compose restart link-server` не подхватит новое значение**: restart
+> просто перезапускает процесс в уже созданном контейнере, окружение у него
+> остаётся от прошлого `up`. Нужно пересоздать контейнер:
+>
+> ```bash
+> docker compose up -d link-server
+> ```
+>
+> Обычно этого достаточно — Compose сам видит, что переменные окружения
+> изменились, и пересоздаёт контейнер. Если не уверены (или не помогло) —
+> форсируйте явно:
+>
+> ```bash
+> docker compose up -d --force-recreate link-server
+> docker exec mc-link-server printenv SERVER_ADDRESS   # проверить, что применилось
+> ```
+
 ### Разовая настройка домена
 
 1. Домен уже должен указывать A-записью на IP этого VPS (сделано).
