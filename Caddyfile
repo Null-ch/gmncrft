@@ -1,24 +1,5 @@
 {$DOMAIN} {
-	# Пароль спрашивается только при реальном скачивании файла - сами страницы
-	# (главная, /backup, /client) открыты всем без авторизации.
-	basic_auth /backup/file* {
-		mc {$HASHED_PASSWORD}
-	}
-	basic_auth /client/file* {
-		mc {$HASHED_PASSWORD}
-	}
-
-	handle /backup/file {
-		rewrite * /latest?token={$BACKUP_LINK_TOKEN}
-		reverse_proxy link-server:8080
-	}
-	handle /client/file {
-		rewrite * /client-file?token={$BACKUP_LINK_TOKEN}
-		reverse_proxy link-server:8080
-	}
-
-	# Главная, /backup, /client - HTML-страницы, отдаёт link-server как есть.
-	handle {
-		reverse_proxy link-server:8080
-	}
+	# Вся логика (главная страница, /backup, /client, форма пароля на файлах) -
+	# в link-server, Caddy тут только TLS-терминатор и обратный прокси.
+	reverse_proxy link-server:8080
 }
