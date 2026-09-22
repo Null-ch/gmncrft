@@ -146,6 +146,23 @@ docker compose restart mc
 
 Клиенты должны использовать те же версии модов (и тот же Forge `52.1.16`), что и сервер.
 
+### Мод авторизации: EasyLogin
+
+В `mods/` уже лежит [EasyLogin](https://modrinth.com/mod/easylogin) `1.0.2` —
+server-side мод авторизации (`/register <пароль>` при первом входе, затем
+`/login <пароль>` при каждом подключении). Полезен в первую очередь при
+`ONLINE_MODE=false`, чтобы никто не мог зайти под чужим ником без пароля —
+клиентам ничего ставить не нужно, работает "из коробки" с ванильным лаунчером.
+
+Применить на VPS:
+
+```bash
+scp minecraft-server/mods/EasyLogin-forge-1.21.1-1.0.2.jar user@your-vps-ip:~/minecraft-server/mods/
+ssh user@your-vps-ip
+cd minecraft-server && docker compose restart mc
+docker compose logs -f mc   # проверить, что мод загрузился без ошибок
+```
+
 ## 6. Бэкапы
 
 Сервис `backup` каждые `BACKUP_INTERVAL` (по умолчанию 24h) делает `save-off` /
