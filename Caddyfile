@@ -1,15 +1,13 @@
 {$DOMAIN} {
-	# /backup и /client - публичные HTML-страницы (без авторизации, доступны всем по ссылке).
-	# Страница сама запускает скачивание нужного файла через JS.
-	handle /backup {
-		reverse_proxy link-server:8080
+	# Пароль спрашивается только при реальном скачивании файла - сами страницы
+	# (главная, /backup, /client) открыты всем без авторизации.
+	basic_auth /backup/file* {
+		mc {$HASHED_PASSWORD}
 	}
-	handle /client {
-		reverse_proxy link-server:8080
+	basic_auth /client/file* {
+		mc {$HASHED_PASSWORD}
 	}
 
-	# Сами файлы - тоже без авторизации снаружи, но токен всё равно подставляется
-	# при проксировании во внутреннюю docker-сеть (defense in depth, не видно снаружи).
 	handle /backup/file {
 		rewrite * /latest?token={$BACKUP_LINK_TOKEN}
 		reverse_proxy link-server:8080
@@ -19,7 +17,8 @@
 		reverse_proxy link-server:8080
 	}
 
+	# Главная, /backup, /client - HTML-страницы, отдаёт link-server как есть.
 	handle {
-		respond "Not found" 404
+		reverse_proxy link-server:8080
 	}
 }

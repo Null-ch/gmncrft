@@ -86,10 +86,14 @@ services:
       # и client-pack.zip, не завися от того, создан ли файл на момент старта контейнера.
       BACKUP_DIR: "/repo/backups"
       CLIENT_PACK_PATH: "/repo/client-pack.zip"
+      MODS_DIR: "/repo/mods"
       SERVER_ADDRESS: "${SERVER_ADDRESS:-2.26.224.164:25565}"
+      MOTD: "${MOTD:-A Forge 1.21.1 Server}"
+      FORGE_INSTALLER_FILE: "${FORGE_INSTALLER_FILE:-forge-1.21.1-52.1.16-installer.jar}"
     # Порт наружу НЕ публикуется - снаружи достучаться можно только через caddy.
-    # /backup и /client (HTML-страницы) открыты без авторизации; сами файлы всё ещё
-    # проверяют TOKEN - его подставляет caddy при проксировании, снаружи не виден.
+    # Страницы (/, /backup, /client) открыты без авторизации; сами файлы (/latest,
+    # /client-file) всё ещё проверяют TOKEN - его подставляет caddy при проксировании,
+    # снаружи не виден, а перед этим caddy спрашивает пароль (Basic Auth, см. Caddyfile).
     volumes:
       - ./link-server/server.js:/app/server.js:ro
       - .:/repo:ro
@@ -100,6 +104,7 @@ services:
     image: caddy:2-alpine
     container_name: mc-caddy
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "/caddy-entrypoint.sh"]
     depends_on:
       - link-server
     ports:
@@ -108,7 +113,12 @@ services:
     environment:
       DOMAIN: "${LINK_DOMAIN:?set LINK_DOMAIN in .env}"
       BACKUP_LINK_TOKEN: "${BACKUP_LINK_TOKEN:?set BACKUP_LINK_TOKEN in .env}"
+      # Простой пароль для скачивания файлов (Basic Auth, логин mc) - бот пишет его
+      # прямо в Discord. Хешируется внутри контейнера при старте (caddy-entrypoint.sh),
+      # чтобы bcrypt-хеш ("$"-синтаксис) не ломался при подстановке из .env.
+      DOWNLOAD_PASSWORD: "${DOWNLOAD_PASSWORD:?set DOWNLOAD_PASSWORD in .env}"
     volumes:
+      - ./caddy-entrypoint.sh:/caddy-entrypoint.sh:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
