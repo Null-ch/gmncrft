@@ -150,6 +150,23 @@ docker compose restart mc
 
 Клиенты должны использовать те же версии модов (и тот же Forge `52.1.16`), что и сервер.
 
+### Контент-моды (подземелья/декор/QoL)
+
+В `mods/` уже лежат (все проверены на Forge 1.21.1, скачаны с Modrinth с проверкой SHA1):
+
+| Мод | Зачем |
+|---|---|
+| [Structory](https://modrinth.com/mod/structory) + [Structory: Towers](https://modrinth.com/mod/structory-towers) | Новые небольшие структуры (руины, башни) в ванильном стиле, свой лут не добавляют |
+| [Dungeons and Taverns](https://modrinth.com/mod/dungeons-and-taverns) | Таверны, аванпосты, новые деревенские постройки |
+| [Macaw's Furniture](https://modrinth.com/mod/macaws-furniture), [Macaw's Bridges](https://modrinth.com/mod/macaws-bridges) | Декоративные блоки: мебель, мосты, заборы — чистая косметика |
+| [Waystones](https://modrinth.com/mod/waystones) | Телепорт между поставленными камнями (удобство, не боевая сила). Требует **Balm** |
+| [Balm](https://modrinth.com/mod/balm) | Библиотека, обязательна для Waystones |
+| [Xaero's Minimap](https://modrinth.com/mod/xaeros-minimap), [Xaero's World Map](https://modrinth.com/mod/xaeros-world-map) | Миникарта и общая карта, видно друг друга |
+
+Ни один не даёт игрокам боевого/экономического преимущества — только контент и удобство.
+После добавления/замены модов не забудьте пересобрать клиент-пак (раздел 5.1)
+и синхронизировать `mods/` с VPS.
+
 ### Мод авторизации: EasyLogin
 
 В `mods/` уже лежит [EasyLogin](https://modrinth.com/mod/easylogin) `1.0.2` —
