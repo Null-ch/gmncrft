@@ -1,0 +1,78 @@
+services:
+  mc:
+    image: itzg/minecraft-server:java21
+    container_name: mc-forge
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-25565}:25565"
+    stdin_open: true
+    tty: true
+    environment:
+      EULA: "TRUE"
+      TYPE: "FORGE"
+      # Ставим Forge из уже скачанного installer-jar (лежит в корне репозитория,
+      # монтируется ниже) - без обращения к maven.minecraftforge.net на каждый чистый старт.
+      FORGE_INSTALLER: "/forge-installer.jar"
+
+      MEMORY: "${MEMORY:-4G}"
+      MOTD: "${MOTD:-A Forge 1.21.1 Server}"
+      DIFFICULTY: "${DIFFICULTY:-normal}"
+      MODE: "${MODE:-survival}"
+      MAX_PLAYERS: "${MAX_PLAYERS:-20}"
+      VIEW_DISTANCE: "${VIEW_DISTANCE:-10}"
+      SIMULATION_DISTANCE: "${SIMULATION_DISTANCE:-10}"
+      SPAWN_PROTECTION: "${SPAWN_PROTECTION:-0}"
+      ALLOW_NETHER: "${ALLOW_NETHER:-true}"
+      PVP: "${PVP:-true}"
+      ONLINE_MODE: "${ONLINE_MODE:-true}"
+      # WHITELIST/OPS через env резолвят UUID по Mojang/PlayerDB API, что не совпадает
+      # с offline-UUID при ONLINE_MODE=false. Поэтому в offline-режиме whitelist только
+      # включается здесь (ENABLE_WHITELIST), а игроки/операторы добавляются вручную через
+      # консоль (scripts/console.sh -> whitelist add <ник> / op <ник>) - см. README.
+      ENABLE_WHITELIST: "${ENABLE_WHITELIST:-false}"
+      WHITELIST: "${WHITELIST:-}"
+      OPS: "${OPS:-}"
+      ICON: "${ICON:-}"
+      TZ: "${TZ:-UTC}"
+
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD in .env}"
+      RCON_PORT: "25575"
+
+      FORGE_FORCE_REINSTALL: "${FORGE_FORCE_REINSTALL:-false}"
+    volumes:
+      - ./data:/data
+      - ./mods:/mods:ro
+      - ./${FORGE_INSTALLER_FILE:-forge-1.21.1-52.1.16-installer.jar}:/forge-installer.jar:ro
+    networks:
+      - mc-net
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      start_period: 5m
+      interval: 30s
+      retries: 10
+
+  backup:
+    image: itzg/mc-backup
+    container_name: mc-backup
+    restart: unless-stopped
+    depends_on:
+      - mc
+    environment:
+      BACKUP_INTERVAL: "${BACKUP_INTERVAL:-24h}"
+      INITIAL_DELAY: "2m"
+      PRUNE_BACKUPS_DAYS: "${PRUNE_BACKUPS_DAYS:-7}"
+      RCON_HOST: "mc"
+      RCON_PORT: "25575"
+      RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD in .env}"
+      BACKUP_METHOD: "tar"
+      TAR_COMPRESS_METHOD: "gzip"
+    volumes:
+      - ./data:/data:ro
+      - ./backups:/backups
+    networks:
+      - mc-net
+
+networks:
+  mc-net:
+    driver: bridge

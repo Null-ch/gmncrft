@@ -1,24 +1,4 @@
-# Устанавливается install-server.sh на VPS, качать заново незачем хранить в git
-forge-*-installer.jar
-libraries/
-mods/
-config/
-world/
-world_nether/
-world_the_end/
-logs/
-crash-reports/
-run.bat
-run.sh
-user_jvm_args.txt
-console.fifo
-
-eula.txt
-server.properties
-ops.json
-whitelist.json
-banned-*.json
-usercache.json
-session.lock
-
+.env
+data/
 backups/
+*.log
