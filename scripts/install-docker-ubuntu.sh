@@ -9,7 +9,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl gnupg ufw
+apt-get install -y ca-certificates curl gnupg ufw zip
 
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -31,9 +31,19 @@ if [[ -n "${SUDO_USER:-}" ]]; then
   echo "Пользователь $SUDO_USER добавлен в группу docker. Перелогиньтесь, чтобы применить."
 fi
 
-# Открываем порт Minecraft-сервера в файрволе (порт RCON 25575 наружу не открываем)
+# Открываем порт Minecraft-сервера и link-server (бэкап/клиент-пак по токену) в файрволе
+# (порт RCON 25575 наружу не открываем). Порт link-server берём из .env, если он уже
+# лежит рядом со скриптом - иначе используем значение по умолчанию (8090).
+BACKUP_SERVER_PORT="8090"
+ENV_FILE="$(dirname "$0")/../.env"
+if [[ -f "$ENV_FILE" ]]; then
+  value="$(grep -E '^BACKUP_SERVER_PORT=' "$ENV_FILE" | tail -n1 | cut -d= -f2-)"
+  [[ -n "$value" ]] && BACKUP_SERVER_PORT="$value"
+fi
+
 ufw allow OpenSSH
 ufw allow 25565/tcp
+ufw allow "${BACKUP_SERVER_PORT}/tcp"
 ufw --force enable
 
-echo "Docker установлен и запущен. Firewall (ufw) активен, порт 25565/tcp открыт."
+echo "Docker установлен и запущен. Firewall (ufw) активен, порты 25565/tcp и ${BACKUP_SERVER_PORT}/tcp открыты."
