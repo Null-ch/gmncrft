@@ -6,28 +6,31 @@
 Forge ставится из уже скачанного `forge-1.21.1-52.1.16-installer.jar` (лежит в корне
 репозитория и монтируется в контейнер) — интернет на VPS для скачивания Forge не нужен.
 Автоматические бэкапы через [itzg/mc-backup](https://github.com/itzg/docker-mc-backup).
-RCON включён для управления консолью и бэкапов, наружу не публикуется.
+RCON включён для управления консолью и бэкапов, наружу не публикуется. Бэкап и
+клиент-пак раздаются по HTTPS через собственный домен (Caddy + Basic Auth, см. 6.1).
 
 ## Состав репозитория
 
 ```
 minecraft-server/
-├── docker-compose.yml                      # сервисы: mc (сервер) + backup (авто-бэкапы)
+├── docker-compose.yml                      # сервисы: mc, backup, link-server, caddy
+├── Caddyfile                                # HTTPS + Basic Auth для домена (см. 6.1)
 ├── forge-1.21.1-52.1.16-installer.jar       # Forge-инсталлятор, монтируется в контейнер
 ├── .env.example                             # шаблон настроек (скопировать в .env)
-├── .env                                     # реальные настройки (не коммитить! RCON-пароль уже сгенерирован)
+├── .env                                     # реальные настройки (не коммитить! секреты уже сгенерированы)
 ├── mods/                                    # сюда класть .jar моды — см. раздел "Моды" ниже
 ├── data/                                    # мир, конфиги, логи (создаётся автоматически при первом запуске)
 ├── backups/                                 # архивы бэкапов мира
 ├── client-pack.zip                          # собирается scripts/build-client-pack.sh, раздаётся через /client
 ├── link-server/
-│   └── server.js                           # отдаёт /latest и /client по токену (см. 6.1)
+│   └── server.js                           # отдаёт /latest и /client по внутреннему токену (см. 6.1)
 └── scripts/
     ├── install-docker-ubuntu.sh   # установка Docker + firewall на чистом VPS
-    ├── console.sh                  # консоль сервера через RCON
-    ├── backup-now.sh                # ручной бэкап
-    ├── build-client-pack.sh          # собрать client-pack.zip
-    └── update.sh                     # обновление образов/пересоздание контейнера
+    ├── setup-caddy-auth.sh         # сгенерировать bcrypt-хеш для Basic Auth
+    ├── console.sh                   # консоль сервера через RCON
+    ├── backup-now.sh                 # ручной бэкап
+    ├── build-client-pack.sh           # собрать client-pack.zip
+    └── update.sh                      # обновление образов/пересоздание контейнера
 ```
 
 ## 1. Разовая подготовка VPS (Ubuntu 22.04/24.04)
@@ -195,26 +198,40 @@ docker compose logs -f mc   # проверить, что мод загрузил
 Восстановление: остановите сервер (`docker compose down`), замените содержимое
 `./data` на данные из нужного архива бэкапа, снова `docker compose up -d`.
 
-## 6.1 Бессрочные ссылки на бэкап и клиент-пак (link-server)
+## 6.1 Бессрочные ссылки на бэкап и клиент-пак (link-server + caddy)
 
-Сервис `link-server` (запускается вместе с остальными, см. `docker-compose.yml`) отдаёт
-по HTTP два файла по токену — ссылки **не меняются** и всегда возвращают самое свежее:
+`link-server` (см. раздел выше в файле `docker-compose.yml`) отдаёт по HTTP два файла —
+ссылки **не меняются** и всегда возвращают самое свежее. Наружу он сам не публикуется:
+перед ним стоит `caddy`, который добавляет HTTPS (домен) и HTTP Basic Auth (логин/пароль
+вместо токена в самой ссылке).
 
-- `http://<IP-VPS>:<BACKUP_SERVER_PORT>/latest?token=<BACKUP_LINK_TOKEN>` — самый новый
-  файл из `./backups` (какой бы `backup` ни сделал последним).
-- `http://<IP-VPS>:<BACKUP_SERVER_PORT>/client?token=<BACKUP_LINK_TOKEN>` — `client-pack.zip`
-  (Forge-инсталлятор + моды + инструкция), см. раздел 5.1.
+Итоговые ссылки для игроков/бота:
 
-`BACKUP_SERVER_PORT` (по умолчанию `8090`) и `BACKUP_LINK_TOKEN` — в `.env`, токен уже
-сгенерирован случайно. Порт открывается в ufw скриптом `install-docker-ubuntu.sh`.
+- `https://<LINK_DOMAIN>/backup` — самый новый файл из `./backups`.
+- `https://<LINK_DOMAIN>/client` — `client-pack.zip` (см. раздел 5.1).
 
-Эти же значения (базовый URL + токен) нужно будет указать в Discord-боте, который умеет
-запрашивать `/latest` и `/client` и публиковать их в Discord — см. документацию бота.
+Логин **`mc`**, пароль — значение `BACKUP_LINK_TOKEN` из `.env`. В самой ссылке токена
+не видно — Basic Auth браузер/curl запрашивает отдельно (`curl -u mc:<токен> https://.../backup`).
 
-> ⚠️ Токен передаётся как есть, без TLS (обычный `http://`, не `https://`) — это не
-> секрет военного уровня, но относитесь к ссылке как к паролю: не постите её в публичные
-> каналы/чаты, только в закрытый Discord-канал сервера. Скомпрометировали — смените
-> `BACKUP_LINK_TOKEN` в `.env` и `docker compose up -d`, старая ссылка перестанет работать.
+### Разовая настройка домена
+
+1. Домен уже должен указывать A-записью на IP этого VPS (сделано).
+2. В `.env`: `LINK_DOMAIN=<ваш домен>`, `BACKUP_LINK_TOKEN` уже сгенерирован.
+3. Сгенерировать bcrypt-хеш токена для Caddy:
+   ```bash
+   bash scripts/setup-caddy-auth.sh
+   ```
+4. `ufw` уже открывает `80/tcp` и `443/tcp` (скрипт `install-docker-ubuntu.sh`).
+5. Запустить/перезапустить: `docker compose up -d`. Caddy сам получит сертификат
+   Let's Encrypt при первом запросе к домену (нужно 1-2 минуты и доступный порт 80).
+   Проверить: `docker compose logs -f caddy`.
+
+Смена `BACKUP_LINK_TOKEN` → заново `bash scripts/setup-caddy-auth.sh` → `docker compose up -d caddy`,
+старый пароль сразу перестаёт подходить.
+
+> Домен виден всем через публичные логи выдачи HTTPS-сертификатов (Certificate
+> Transparency) — это нормально и не секрет. Секрет — пароль Basic Auth, его как обычно
+> не публикуйте вне закрытого Discord-канала.
 
 ## 5.1 Клиент-пак для игроков
 
@@ -242,7 +259,7 @@ bash scripts/build-client-pack.sh
 - RCON-порт не публикуется наружу (доступен только внутри Docker-сети / через `docker compose exec`).
 - `.env` содержит секреты (`RCON_PASSWORD`, `BACKUP_LINK_TOKEN`) — не коммитьте его в публичный
   репозиторий (уже добавлен в `.gitignore`).
-- `link-server` публикует `BACKUP_SERVER_PORT` наружу без TLS — отдаёт файлы только с верным
-  `token` в query, но сам токен идёт открытым текстом (см. раздел 6.1).
+- `link-server` наружу вообще не публикуется — единственная внешняя точка входа это `caddy`
+  (HTTPS + Basic Auth, логин/пароль отдельно от ссылки, см. раздел 6.1).
 - `ONLINE_MODE=true` по умолчанию — проверка лицензии Mojang, не отключайте на публичном сервере
   без необходимости (см. раздел 4.1).

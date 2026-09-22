@@ -31,19 +31,13 @@ if [[ -n "${SUDO_USER:-}" ]]; then
   echo "Пользователь $SUDO_USER добавлен в группу docker. Перелогиньтесь, чтобы применить."
 fi
 
-# Открываем порт Minecraft-сервера и link-server (бэкап/клиент-пак по токену) в файрволе
-# (порт RCON 25575 наружу не открываем). Порт link-server берём из .env, если он уже
-# лежит рядом со скриптом - иначе используем значение по умолчанию (8090).
-BACKUP_SERVER_PORT="8090"
-ENV_FILE="$(dirname "$0")/../.env"
-if [[ -f "$ENV_FILE" ]]; then
-  value="$(grep -E '^BACKUP_SERVER_PORT=' "$ENV_FILE" | tail -n1 | cut -d= -f2-)"
-  [[ -n "$value" ]] && BACKUP_SERVER_PORT="$value"
-fi
-
+# Открываем порт Minecraft-сервера и HTTP/HTTPS для caddy (бэкап/клиент-пак по домену)
+# в файрволе. Порт RCON 25575 и внутренний порт link-server наружу не открываем -
+# снаружи к link-server можно достучаться только через caddy.
 ufw allow OpenSSH
 ufw allow 25565/tcp
-ufw allow "${BACKUP_SERVER_PORT}/tcp"
+ufw allow 80/tcp
+ufw allow 443/tcp
 ufw --force enable
 
-echo "Docker установлен и запущен. Firewall (ufw) активен, порты 25565/tcp и ${BACKUP_SERVER_PORT}/tcp открыты."
+echo "Docker установлен и запущен. Firewall (ufw) активен, порты 25565/tcp, 80/tcp и 443/tcp открыты."

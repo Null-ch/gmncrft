@@ -1,0 +1,27 @@
+{$DOMAIN} {
+	# HTTP Basic Auth - логин/пароль запрашивает браузер, в самой ссылке
+	# токена не видно. Пароль = BACKUP_LINK_TOKEN, хеш из BASIC_AUTH_HASH
+	# (сгенерирован scripts/setup-caddy-auth.sh).
+	basic_auth /backup* {
+		mc {$BASIC_AUTH_HASH}
+	}
+	basic_auth /client* {
+		mc {$BASIC_AUTH_HASH}
+	}
+
+	# Наружу - чистые пути без токена, link-server получает токен уже здесь,
+	# на сервере, из query-параметра.
+	handle /backup {
+		rewrite * /latest?token={$BACKUP_LINK_TOKEN}
+		reverse_proxy link-server:8080
+	}
+
+	handle /client {
+		rewrite * /client?token={$BACKUP_LINK_TOKEN}
+		reverse_proxy link-server:8080
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+}

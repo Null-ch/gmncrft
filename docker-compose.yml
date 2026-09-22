@@ -86,14 +86,41 @@ services:
       # и client-pack.zip, не завися от того, создан ли файл на момент старта контейнера.
       BACKUP_DIR: "/repo/backups"
       CLIENT_PACK_PATH: "/repo/client-pack.zip"
-    ports:
-      - "${BACKUP_SERVER_PORT:-8090}:8080"
+    # Порт наружу НЕ публикуется - снаружи достучаться можно только через caddy
+    # (HTTPS + Basic Auth), см. сервис ниже. Внутри docker-сети токен остаётся
+    # как дополнительный уровень защиты.
     volumes:
       - ./link-server/server.js:/app/server.js:ro
       - .:/repo:ro
     networks:
       - mc-net
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: mc-caddy
+    restart: unless-stopped
+    depends_on:
+      - link-server
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${LINK_DOMAIN:?set LINK_DOMAIN in .env}"
+      BACKUP_LINK_TOKEN: "${BACKUP_LINK_TOKEN:?set BACKUP_LINK_TOKEN in .env}"
+      # bcrypt-хеш BACKUP_LINK_TOKEN для HTTP Basic Auth - генерируется
+      # scripts/setup-caddy-auth.sh, сам plaintext-токен в Caddyfile не попадает.
+      BASIC_AUTH_HASH: "${BASIC_AUTH_HASH:?run scripts/setup-caddy-auth.sh first}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - mc-net
+
 networks:
   mc-net:
     driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
