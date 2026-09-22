@@ -1,23 +1,21 @@
 {$DOMAIN} {
-	# HTTP Basic Auth - логин/пароль запрашивает браузер, в самой ссылке
-	# токена не видно. Пароль = BACKUP_LINK_TOKEN, хеш из BASIC_AUTH_HASH
-	# (сгенерирован scripts/setup-caddy-auth.sh).
-	basic_auth /backup* {
-		mc {$BASIC_AUTH_HASH}
-	}
-	basic_auth /client* {
-		mc {$BASIC_AUTH_HASH}
-	}
-
-	# Наружу - чистые пути без токена, link-server получает токен уже здесь,
-	# на сервере, из query-параметра.
+	# /backup и /client - публичные HTML-страницы (без авторизации, доступны всем по ссылке).
+	# Страница сама запускает скачивание нужного файла через JS.
 	handle /backup {
-		rewrite * /latest?token={$BACKUP_LINK_TOKEN}
+		reverse_proxy link-server:8080
+	}
+	handle /client {
 		reverse_proxy link-server:8080
 	}
 
-	handle /client {
-		rewrite * /client?token={$BACKUP_LINK_TOKEN}
+	# Сами файлы - тоже без авторизации снаружи, но токен всё равно подставляется
+	# при проксировании во внутреннюю docker-сеть (defense in depth, не видно снаружи).
+	handle /backup/file {
+		rewrite * /latest?token={$BACKUP_LINK_TOKEN}
+		reverse_proxy link-server:8080
+	}
+	handle /client/file {
+		rewrite * /client-file?token={$BACKUP_LINK_TOKEN}
 		reverse_proxy link-server:8080
 	}
 

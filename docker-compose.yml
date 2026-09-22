@@ -86,9 +86,10 @@ services:
       # и client-pack.zip, не завися от того, создан ли файл на момент старта контейнера.
       BACKUP_DIR: "/repo/backups"
       CLIENT_PACK_PATH: "/repo/client-pack.zip"
-    # Порт наружу НЕ публикуется - снаружи достучаться можно только через caddy
-    # (HTTPS + Basic Auth), см. сервис ниже. Внутри docker-сети токен остаётся
-    # как дополнительный уровень защиты.
+      SERVER_ADDRESS: "${SERVER_ADDRESS:-2.26.224.164:25565}"
+    # Порт наружу НЕ публикуется - снаружи достучаться можно только через caddy.
+    # /backup и /client (HTML-страницы) открыты без авторизации; сами файлы всё ещё
+    # проверяют TOKEN - его подставляет caddy при проксировании, снаружи не виден.
     volumes:
       - ./link-server/server.js:/app/server.js:ro
       - .:/repo:ro
@@ -107,9 +108,6 @@ services:
     environment:
       DOMAIN: "${LINK_DOMAIN:?set LINK_DOMAIN in .env}"
       BACKUP_LINK_TOKEN: "${BACKUP_LINK_TOKEN:?set BACKUP_LINK_TOKEN in .env}"
-      # bcrypt-хеш BACKUP_LINK_TOKEN для HTTP Basic Auth - генерируется
-      # scripts/setup-caddy-auth.sh, сам plaintext-токен в Caddyfile не попадает.
-      BASIC_AUTH_HASH: "${BASIC_AUTH_HASH:?run scripts/setup-caddy-auth.sh first}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
