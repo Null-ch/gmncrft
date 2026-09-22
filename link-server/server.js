@@ -8,6 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { buildClientPack } = require('./build-client-pack');
 
 const PORT = Number(process.env.PORT || 8080);
 const DOWNLOAD_PASSWORD = process.env.DOWNLOAD_PASSWORD;
@@ -420,7 +421,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/client/file') {
     return handleProtectedFile(req, res, {
       getFile: () => (fs.existsSync(CLIENT_PACK_PATH) ? CLIENT_PACK_PATH : null),
-      notFoundMessage: 'client-pack.zip ещё не собран - запусти scripts/build-client-pack.sh на сервере',
+      notFoundMessage: 'client-pack.zip ещё не собран - проверь логи link-server (docker compose logs link-server) и наличие forge-*-installer.jar в корне репозитория',
       downloadName: 'minecraft-client-pack.zip',
       title: 'Клиент-пак',
       action: '/client/file',
@@ -434,5 +435,21 @@ const server = http.createServer((req, res) => {
 
   return notFound(res, 'Not found');
 });
+
+// Пересобираем client-pack.zip на каждом старте контейнера - вместо ручного
+// scripts/build-client-pack.sh на хосте. Не критично для работы сайта, поэтому
+// ошибка здесь не должна мешать серверу запуститься (просто /client/file вернёт 404).
+try {
+  buildClientPack({
+    // forge-*-installer.jar лежит в /repo (корень примонтированного репозитория),
+    // а не рядом с CLIENT_PACK_PATH (тот теперь в writable /app, см. docker-compose.yml).
+    repoDir: path.dirname(BACKUP_DIR),
+    modsDir: MODS_DIR,
+    outPath: CLIENT_PACK_PATH,
+    serverAddress: SERVER_ADDRESS,
+  });
+} catch (err) {
+  console.error('[client-pack] Не удалось собрать client-pack.zip:', err.message);
+}
 
 server.listen(PORT, () => console.log(`link-server слушает на порту ${PORT}`));

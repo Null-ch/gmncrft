@@ -77,27 +77,26 @@ services:
       - mc-net
 
   link-server:
-    image: node:22-bookworm-slim
+    build:
+      context: ./link-server
     container_name: mc-link-server
     restart: unless-stopped
-    working_dir: /app
-    command: ["node", "server.js"]
     environment:
       PORT: "8080"
       # Простой пароль для скачивания /backup/file и /client/file - своя HTML-форма
       # в стиле сайта (не нативный Basic Auth диалог браузера, его нельзя стилизовать).
       DOWNLOAD_PASSWORD: "${DOWNLOAD_PASSWORD:?set DOWNLOAD_PASSWORD in .env}"
-      # Весь репозиторий смонтирован read-only ниже - чтобы отдавать backups/*.tar.gz
-      # и client-pack.zip, не завися от того, создан ли файл на момент старта контейнера.
+      # Репозиторий смонтирован read-only ниже - чтобы отдавать backups/*.tar.gz, брать
+      # моды и forge-installer.jar для автосборки client-pack.zip при каждом старте
+      # (build-client-pack.js). Сам собранный zip пишется в writable /app (не в /repo).
       BACKUP_DIR: "/repo/backups"
-      CLIENT_PACK_PATH: "/repo/client-pack.zip"
+      CLIENT_PACK_PATH: "/app/client-pack.zip"
       MODS_DIR: "/repo/mods"
       SERVER_ADDRESS: "${SERVER_ADDRESS:-2.26.224.164:25565}"
       MOTD: "${MOTD:-A Forge 1.21.1 Server}"
       FORGE_INSTALLER_FILE: "${FORGE_INSTALLER_FILE:-forge-1.21.1-52.1.16-installer.jar}"
     # Порт наружу НЕ публикуется - снаружи достучаться можно только через caddy.
     volumes:
-      - ./link-server/server.js:/app/server.js:ro
       - .:/repo:ro
     networks:
       - mc-net

@@ -24,16 +24,20 @@ minecraft-server/
 ├── config/                                  # конфиги модов (loginsystem.properties и т.п.), копируются в /data/config
 ├── data/                                    # мир, конфиги, логи (создаётся автоматически при первом запуске)
 ├── backups/                                 # архивы бэкапов мира
-├── client-pack.zip                          # собирается scripts/build-client-pack.sh, раздаётся через /client
 ├── link-server/
-│   └── server.js                           # главная + /backup, /client (страницы) + файлы (см. 6.1)
+│   ├── Dockerfile                          # node + zip (для автосборки client-pack.zip)
+│   ├── build-client-pack.js                 # собирает client-pack.zip при каждом старте
+│   └── server.js                            # главная + /backup, /client (страницы) + файлы (см. 6.1)
 └── scripts/
     ├── install-docker-ubuntu.sh   # установка Docker + firewall на чистом VPS
     ├── console.sh                  # консоль сервера через RCON
     ├── backup-now.sh                # ручной бэкап
-    ├── build-client-pack.sh          # собрать client-pack.zip
-    └── update.sh                      # обновление образов/пересоздание контейнера
+    └── update.sh                     # обновление образов/пересоздание контейнера
 ```
+
+`client-pack.zip` больше не хранится в репозитории — `link-server` собирает его сам
+при каждом старте контейнера (Forge-инсталлятор + `mods/*.jar` + сгенерированная
+инструкция), см. раздел 5.1.
 
 ## 1. Разовая подготовка VPS (Ubuntu 22.04/24.04)
 
@@ -208,8 +212,9 @@ cd minecraft-server
 rm -f mods/auth-v1.5.1.jar mods/EasyLogin-forge-1.21.1-1.0.2.jar   # старые варианты - удалить
 docker compose up -d   # up, не restart - подхватить новый volume ./config
 docker compose logs -f mc   # проверить, что мод загрузился без ошибок
-bash scripts/build-client-pack.sh   # пересобрать клиент-пак с актуальными модами
 ```
+
+Клиент-пак (см. раздел 5.1) пересоберётся сам при следующем старте `link-server`.
 
 ## 6. Бэкапы
 
@@ -255,16 +260,17 @@ Discord-бот печатает его прямо в ответе на `/minecra
 
 ## 5.1 Клиент-пак для игроков
 
-`scripts/build-client-pack.sh` собирает `client-pack.zip` (Forge-инсталлятор из корня
-репозитория + все `.jar` из `mods/` + `README.txt` с инструкцией по установке). Запускайте
-его на VPS каждый раз после изменения модов или обновления Forge:
+`client-pack.zip` (Forge-инсталлятор + все `.jar` из `mods/` + `README.txt` с инструкцией
+по установке) собирается **автоматически** сервисом `link-server` при каждом его старте
+(`link-server/build-client-pack.js`) — вручную ничего запускать не нужно. Чтобы пересобрать
+после изменения модов или обновления Forge, просто перезапустите этот сервис:
 
 ```bash
-bash scripts/build-client-pack.sh
+docker compose restart link-server
+docker compose logs link-server   # в логе будет "[client-pack] Собран ... (N модов, Forge ...)"
 ```
 
-Результат сразу становится доступен по бессрочной ссылке `/client` (раздел 6.1) —
-пересобирать `docker compose` не нужно, `link-server` подхватывает файл на лету.
+Результат сразу становится доступен по бессрочной ссылке `/client` (раздел 6.1).
 
 ## 7. Обновление версии Forge / модов
 
@@ -272,7 +278,7 @@ bash scripts/build-client-pack.sh
    `FORGE_INSTALLER_FILE` в `.env`.
 2. Обновите содержимое `mods/`, если нужно.
 3. Выполните `bash scripts/update.sh` — подтянет свежие образы и пересоздаст контейнер `mc`.
-4. Пересоберите клиент-пак: `bash scripts/build-client-pack.sh`.
+4. `docker compose restart link-server` — пересоберёт клиент-пак с новыми модами/Forge.
 
 ## Безопасность
 
