@@ -13,10 +13,15 @@ fi
 
 HASH="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$TOKEN")"
 
+# Docker Compose сам интерпретирует "$..." внутри .env как подстановку переменных
+# (даже без фигурных скобок), а bcrypt-хеш сплошь состоит из таких последовательностей
+# ($2a$14$...) - без экранирования Compose тихо съедает часть хеша. "$$" - буквальный "$".
+ESCAPED_HASH="${HASH//\$/\$\$}"
+
 if grep -q '^BASIC_AUTH_HASH=' .env; then
-  sed -i "s#^BASIC_AUTH_HASH=.*#BASIC_AUTH_HASH=${HASH}#" .env
+  sed -i "s#^BASIC_AUTH_HASH=.*#BASIC_AUTH_HASH=${ESCAPED_HASH}#" .env
 else
-  echo "BASIC_AUTH_HASH=${HASH}" >> .env
+  echo "BASIC_AUTH_HASH=${ESCAPED_HASH}" >> .env
 fi
 
 echo "BASIC_AUTH_HASH обновлён в .env."
