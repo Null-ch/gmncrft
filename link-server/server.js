@@ -11,7 +11,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { buildClientPack, clientGuide, guideToText } = require('./build-client-pack');
+const { buildClientPack, clientGuide, guideToText, minLoaderVersion, listModJars } = require('./build-client-pack');
 const { rconCommand } = require('./rcon');
 const { createApplicationStore, ApplicationError } = require('./applications');
 
@@ -346,7 +346,9 @@ ${body}
 }
 
 function renderHomePage() {
-  const { mcVersion, loaderVersion } = parseFabricVersion(FABRIC_LAUNCHER_FILE);
+  const { mcVersion } = parseFabricVersion(FABRIC_LAUNCHER_FILE);
+  // Показываем минимум для клиента (из модов), а не версию loader'а сервера - см. minLoaderVersion.
+  const minLoader = minLoaderVersion(MODS_DIR, listModJars(MODS_DIR));
   const mods = listMods();
 
   const modsList = mods.length
@@ -369,7 +371,7 @@ function renderHomePage() {
     <p class="subtitle">Fabric-сервер Minecraft — присоединяйся!</p>
 
     <div class="info-row"><span>Версия Minecraft</span><b>${esc(mcVersion)}</b></div>
-    ${loaderVersion ? `<div class="info-row"><span>Версия Fabric Loader</span><b>${esc(loaderVersion)}</b></div>` : ''}
+    ${minLoader ? `<div class="info-row"><span>Версия Fabric Loader</span><b>${esc(minLoader)} или новее</b></div>` : ''}
     <div class="info-row"><span>Адрес сервера</span><b>${esc(SERVER_ADDRESS)}</b></div>
 
     ${modsList}

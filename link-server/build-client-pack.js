@@ -29,16 +29,47 @@ function fabricApiVersion(modJars) {
   return jar ? jar.replace(/^fabric-api-(.+)\.jar$/, '$1') : null;
 }
 
+const compareVersions = (a, b) => {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+};
+
+// Минимальный Fabric Loader для клиента = максимум из ">=X" в depends.fabricloader модов.
+// Версия loader'а на сервере (из имени launcher-jar) игроку не важна: T-Launcher ставит
+// свой loader, и подходит любой не ниже этого минимума. Кэш по списку jar - на главной
+// и /client это считается на каждый запрос, а unzip 10+ файлов не бесплатный.
+let loaderCache = { key: null, value: null };
+function minLoaderVersion(modsDir, modJars) {
+  const key = modJars.join('\n');
+  if (loaderCache.key === key) return loaderCache.value;
+  let min = null;
+  for (const jar of modJars) {
+    try {
+      const meta = JSON.parse(execFileSync('unzip', ['-p', path.join(modsDir, jar), 'fabric.mod.json']).toString());
+      const m = /(?:>=|\^|~)?\s*(\d+\.\d+\.\d+)/.exec(String(meta.depends?.fabricloader || ''));
+      if (m && (!min || compareVersions(m[1], min) > 0)) min = m[1];
+    } catch {
+      // не Fabric-мод или нет unzip - пропускаем
+    }
+  }
+  loaderCache = { key, value: min };
+  return min;
+}
+
 /**
  * Инструкция установки клиента: версии, шаги по разделам и список модов. Из неё
  * рендерятся и HTML на /client (server.js), и README.txt (guideToText ниже).
  */
-function clientGuide({ mcVersion, loaderVersion, serverAddress, modsDir }) {
-  const loaderLabel = loaderVersion || 'последняя стабильная';
-  // Так называется версия, которую создаёт Fabric Installer - её и надо выбирать в лаунчере.
-  const fabricVersionName = `fabric-loader-${loaderVersion || '<версия>'}-${mcVersion}`;
+function clientGuide({ mcVersion, serverAddress, modsDir }) {
   const mods = modsDir ? listModJars(modsDir) : [];
   const apiVersion = fabricApiVersion(mods);
+  const minLoader = modsDir ? minLoaderVersion(modsDir, mods) : null;
+  const loaderLabel = minLoader ? `${minLoader} или новее` : 'последняя стабильная';
   return {
     title: `Установка клиента (Fabric, Minecraft ${mcVersion})`,
     facts: [
@@ -64,24 +95,13 @@ function clientGuide({ mcVersion, loaderVersion, serverAddress, modsDir }) {
         ],
       },
       {
-        title: 'Вариант 2. Официальный лаунчер (нужна лицензия)',
-        steps: [
-          'Установи официальный лаунчер: https://www.minecraft.net/ru-ru/download',
-          `Скачай Fabric Installer: ${FABRIC_INSTALLER_URL} (для .jar-версии нужна Java 25+, например https://adoptium.net).`,
-          `В инсталляторе вкладка «Client»: Minecraft Version ${mcVersion}, Loader Version ${loaderLabel}, стандартная папка .minecraft → «Install».`,
-          `В лаунчере выбери профиль «fabric-loader-${mcVersion}» (версия ${fabricVersionName}), запусти игру один раз и закрой.`,
-          'Скопируй все .jar из папки mods архива в папку mods игры: Windows — %appdata%\\.minecraft\\mods, Linux/macOS — ~/.minecraft/mods.',
-          `Запусти профиль Fabric → «Сетевая игра» → «Добавить сервер» → адрес ${serverAddress}.`,
-        ],
-      },
-      {
         title: 'Первый вход на сервер',
         steps: [
           'На сервере включён whitelist: сначала подай заявку на сайте сервера (/apply) со своим ником, дождись одобрения.',
           'Без этого при подключении будет ошибка «You are not white-listed on this server!».',
           `Моды нужны именно из архива сервера: Forge-моды и моды под другую версию Minecraft с Fabric ${mcVersion} не загрузятся.`,
           'Старые моды (например, от прошлой версии сервера) из папки mods игры удали — с ними игра не запустится.',
-          `Ошибка «Replace mod 'Fabric Loader' … with version … or later» значит, что Fabric Loader в лаунчере слишком старый: поставь новее через Fabric Installer (${FABRIC_INSTALLER_URL}) и выбери версию «${fabricVersionName}».`,
+          `Ошибка «Replace mod 'Fabric Loader' … with version … or later» значит, что Fabric Loader в лаунчере слишком старый (нужен ${loaderLabel}): поставь новее через Fabric Installer (${FABRIC_INSTALLER_URL}) и выбери в лаунчере появившуюся версию «fabric-loader-…-${mcVersion}».`,
         ],
       },
     ],
@@ -108,7 +128,7 @@ function guideToText(guide) {
 
 /**
  * В архив: README.txt (инструкция, версии, список модов) + mods/*.jar.
- * guideOptions - то же, что для clientGuide (mcVersion, loaderVersion, serverAddress).
+ * guideOptions - то же, что для clientGuide (mcVersion, serverAddress).
  */
 function buildClientPack({ modsDir, outPath, ...guideOptions }) {
   const modJars = listModJars(modsDir);
@@ -139,4 +159,4 @@ function buildClientPack({ modsDir, outPath, ...guideOptions }) {
   }
 }
 
-module.exports = { buildClientPack, clientGuide, guideToText };
+module.exports = { buildClientPack, clientGuide, guideToText, minLoaderVersion, listModJars };

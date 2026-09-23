@@ -1,7 +1,8 @@
 FROM node:22-bookworm-slim
 
-# zip - нужен только для автосборки client-pack.zip при старте (build-client-pack.js).
-RUN apt-get update && apt-get install -y --no-install-recommends zip \
+# zip - автосборка client-pack.zip при старте, unzip - чтение fabric.mod.json модов
+# (минимальная версия Fabric Loader для клиента), см. build-client-pack.js.
+RUN apt-get update && apt-get install -y --no-install-recommends zip unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
