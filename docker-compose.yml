@@ -1,7 +1,7 @@
 services:
   mc:
-    image: itzg/minecraft-server:java21
-    container_name: mc-forge
+    image: itzg/minecraft-server:java25
+    container_name: mc-fabric
     restart: unless-stopped
     ports:
       - "${SERVER_PORT:-25565}:25565"
@@ -9,13 +9,18 @@ services:
     tty: true
     environment:
       EULA: "TRUE"
-      TYPE: "FORGE"
-      # Ставим Forge из уже скачанного installer-jar (лежит в корне репозитория,
-      # монтируется ниже) - без обращения к maven.minecraftforge.net на каждый чистый старт.
-      FORGE_INSTALLER: "/forge-installer.jar"
+      TYPE: "FABRIC"
+      # Minecraft 26.1.x требует Java 25 (отсюда тег образа java25).
+      VERSION: "${MC_VERSION:-26.1.2}"
+      # Fabric ставится из уже скачанного server launcher-jar (лежит в корне репозитория,
+      # монтируется ниже): версии Minecraft и loader зашиты в сам jar.
+      FABRIC_LAUNCHER: "/fabric-server-launcher.jar"
+      # /data/mods каждый старт собирается заново из ./mods - иначе удалённые из mods/
+      # jar (в т.ч. старые Forge-моды) остаются в data/mods и роняют Fabric при загрузке.
+      REMOVE_OLD_MODS: "TRUE"
 
       MEMORY: "${MEMORY:-4G}"
-      MOTD: "${MOTD:-A Forge 1.21.1 Server}"
+      MOTD: "${MOTD:-A Fabric 26.1.2 Server}"
       DIFFICULTY: "${DIFFICULTY:-normal}"
       MODE: "${MODE:-survival}"
       MAX_PLAYERS: "${MAX_PLAYERS:-20}"
@@ -39,11 +44,11 @@ services:
       RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD in .env}"
       RCON_PORT: "25575"
 
-      FORGE_FORCE_REINSTALL: "${FORGE_FORCE_REINSTALL:-false}"
+      FABRIC_FORCE_REINSTALL: "${FABRIC_FORCE_REINSTALL:-false}"
     volumes:
       - ./data:/data
       - ./mods:/mods:ro
-      - ./${FORGE_INSTALLER_FILE:-forge-1.21.1-52.1.16-installer.jar}:/forge-installer.jar:ro
+      - ./${FABRIC_LAUNCHER_FILE:-fabric-server-mc.26.1.2-loader.0.19.5-launcher.1.1.2.jar}:/fabric-server-launcher.jar:ro
     networks:
       - mc-net
     healthcheck:
@@ -84,14 +89,15 @@ services:
       # в стиле сайта (не нативный Basic Auth диалог браузера, его нельзя стилизовать).
       DOWNLOAD_PASSWORD: "${DOWNLOAD_PASSWORD:?set DOWNLOAD_PASSWORD in .env}"
       # Репозиторий смонтирован read-only ниже - чтобы отдавать backups/*.tar.gz, брать
-      # моды и forge-installer.jar для автосборки client-pack.zip при каждом старте
+      # моды и fabric-installer-*.jar для автосборки client-pack.zip при каждом старте
       # (build-client-pack.js). Сам собранный zip пишется в writable /app (не в /repo).
       BACKUP_DIR: "/repo/backups"
       CLIENT_PACK_PATH: "/app/client-pack.zip"
       MODS_DIR: "/repo/mods"
       SERVER_ADDRESS: "${SERVER_ADDRESS:-2.26.224.164:25565}"
-      MOTD: "${MOTD:-A Forge 1.21.1 Server}"
-      FORGE_INSTALLER_FILE: "${FORGE_INSTALLER_FILE:-forge-1.21.1-52.1.16-installer.jar}"
+      MOTD: "${MOTD:-A Fabric 26.1.2 Server}"
+      # Из имени серверного launcher-jar сайт берёт версии Minecraft и Fabric loader.
+      FABRIC_LAUNCHER_FILE: "${FABRIC_LAUNCHER_FILE:-fabric-server-mc.26.1.2-loader.0.19.5-launcher.1.1.2.jar}"
       # Заявки на игру: хранятся в /data (том ниже), одобренный ник добавляется в
       # whitelist через RCON контейнера mc. BOT_API_TOKEN - для Discord-бота (/api/applications).
       APPLICATIONS_FILE: "/data/applications.json"

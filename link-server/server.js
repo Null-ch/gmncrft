@@ -1,6 +1,7 @@
 'use strict';
 // Минимальный HTTP-сервер без зависимостей: главная страница с инфо о сервере/модах,
-// страницы /backup и /client, и сами файлы (/backup/file, /client/file) - защищены
+// страница /backup, инструкция установки клиента /client (+ /client/readme.txt),
+// и сами файлы (/backup/file, /client/file - архив README.txt + моды) - защищены
 // своей формой пароля в стиле сайта (не нативным browser-alert Basic Auth, его нельзя
 // стилизовать). Пароль бот тоже умеет передавать напрямую заголовком (без формы).
 // Ссылки бессрочные: /backup/file всегда резолвит САМЫЙ НОВЫЙ файл в BACKUP_DIR.
@@ -10,7 +11,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { buildClientPack } = require('./build-client-pack');
+const { buildClientPack, clientGuide, guideToText } = require('./build-client-pack');
 const { rconCommand } = require('./rcon');
 const { createApplicationStore, ApplicationError } = require('./applications');
 
@@ -21,7 +22,7 @@ const CLIENT_PACK_PATH = process.env.CLIENT_PACK_PATH || '/repo/client-pack.zip'
 const MODS_DIR = process.env.MODS_DIR || '/repo/mods';
 const SERVER_ADDRESS = process.env.SERVER_ADDRESS || '2.26.224.164:25565';
 const MOTD = process.env.MOTD || 'Minecraft-сервер';
-const FORGE_INSTALLER_FILE = process.env.FORGE_INSTALLER_FILE || '';
+const FABRIC_LAUNCHER_FILE = process.env.FABRIC_LAUNCHER_FILE || '';
 const APPLICATIONS_FILE = process.env.APPLICATIONS_FILE || '/data/applications.json';
 const WHITELIST_FILE = process.env.WHITELIST_FILE || '/repo/data/whitelist.json';
 // Токен, которым Discord-бот ходит в /api/applications. Без него API выключено,
@@ -62,12 +63,13 @@ function isWhitelisted(nickname) {
   }
 }
 
-// Команда мода SimpleWhitelist: пишет в whitelist офлайн-UUID по нику (обычный
+// Команда мода EasyWhitelist: whitelist по нику, без запроса UUID у Mojang (обычный
 // "whitelist add" в offline-режиме может записать UUID лицензионного аккаунта).
+// Ответы ванильные: "Added <ник> to the whitelist" / "Player is already whitelisted".
 async function addToWhitelist(nickname) {
-  const raw = await rconCommand({ ...RCON, command: `simplewhitelist add ${nickname}` });
+  const raw = await rconCommand({ ...RCON, command: `easywhitelist add ${nickname}` });
   const reply = raw.replace(/§./g, '').trim();
-  if (/added to whitelist|already whitelisted/i.test(reply)) return reply;
+  if (/added .+ to the whitelist|already whitelisted/i.test(reply)) return reply;
   throw new Error(`Сервер не добавил ${nickname} в whitelist: ${reply || 'пустой ответ'}`);
 }
 
@@ -97,10 +99,10 @@ function recordApply(ip) {
   applyHits.set(ip, [...recentApplies(ip), Date.now()]);
 }
 
-// "forge-1.21.1-52.1.16-installer.jar" -> { mcVersion: "1.21.1", forgeVersion: "52.1.16" }
-function parseForgeVersion(filename) {
-  const m = /^forge-([\d.]+)-([\d.]+)-installer\.jar$/.exec(filename);
-  return m ? { mcVersion: m[1], forgeVersion: m[2] } : { mcVersion: '1.21.1', forgeVersion: null };
+// "fabric-server-mc.26.1.2-loader.0.19.5-launcher.1.1.2.jar" -> { mcVersion: "26.1.2", loaderVersion: "0.19.5" }
+function parseFabricVersion(filename) {
+  const m = /^fabric-server-mc\.([\w.-]+)-loader\.([\d.]+)-launcher\.[\d.]+\.jar$/.exec(filename);
+  return m ? { mcVersion: m[1], loaderVersion: m[2] } : { mcVersion: '26.1.2', loaderVersion: null };
 }
 
 function listMods() {
@@ -310,11 +312,23 @@ const BASE_STYLE = `
     padding: 8px;
     margin-bottom: 12px;
   }
+  .card.wide { max-width: 720px; }
+  .guide {
+    text-align: left;
+    background: #2b2b2b;
+    border: 2px solid #000;
+    padding: 10px 14px;
+    margin: 14px 0;
+  }
+  .guide ol { margin: 0; padding-left: 22px; }
+  .guide li { color: #ddd; font-size: 13px; line-height: 1.6; margin-bottom: 4px; overflow-wrap: anywhere; }
+  .guide a { color: #7CFC00; }
 `;
 
 const HOME_LINK = '<div class="nav"><a class="btn secondary" href="/">← На главную</a></div>';
 
-function page(title, body) {
+// wide - для длинных страниц (инструкция на /client), остальным хватает узкой карточки.
+function page(title, body, { wide = false } = {}) {
   return `<!doctype html>
 <html lang="ru">
 <head>
@@ -324,7 +338,7 @@ function page(title, body) {
 <style>${BASE_STYLE}</style>
 </head>
 <body>
-  <div class="card">
+  <div class="card${wide ? ' wide' : ''}">
 ${body}
   </div>
 </body>
@@ -332,7 +346,7 @@ ${body}
 }
 
 function renderHomePage() {
-  const { mcVersion, forgeVersion } = parseForgeVersion(FORGE_INSTALLER_FILE);
+  const { mcVersion, loaderVersion } = parseFabricVersion(FABRIC_LAUNCHER_FILE);
   const mods = listMods();
 
   const modsList = mods.length
@@ -352,17 +366,17 @@ function renderHomePage() {
 <body>
   <div class="card">
     <h1>${esc(MOTD)}</h1>
-    <p class="subtitle">Forge-сервер Minecraft — присоединяйся!</p>
+    <p class="subtitle">Fabric-сервер Minecraft — присоединяйся!</p>
 
     <div class="info-row"><span>Версия Minecraft</span><b>${esc(mcVersion)}</b></div>
-    ${forgeVersion ? `<div class="info-row"><span>Версия Forge</span><b>${esc(forgeVersion)}</b></div>` : ''}
+    ${loaderVersion ? `<div class="info-row"><span>Версия Fabric Loader</span><b>${esc(loaderVersion)}</b></div>` : ''}
     <div class="info-row"><span>Адрес сервера</span><b>${esc(SERVER_ADDRESS)}</b></div>
 
     ${modsList}
 
     <a class="btn" href="/apply">Подать заявку на игру</a>
     <a class="btn" href="/backup">Скачать бэкап мира</a>
-    <a class="btn" href="/client">Скачать клиент (Forge + моды)</a>
+    <a class="btn" href="/client">Установка клиента и моды</a>
     <div class="lock">🔒 Для скачивания файлов нужен пароль — спроси у администратора сервера.</div>
 
     <p class="tip">Совет: на сервере включён whitelist — сначала подай заявку со своим ником, после одобрения можно заходить.</p>
@@ -372,7 +386,7 @@ function renderHomePage() {
 }
 
 // Скачивание запускается автоматически; кнопка остаётся как ручной запасной вариант.
-// Ведёт на /backup/file или /client/file, где встретит форму пароля (см. renderPasswordForm).
+// Ведёт на /backup/file, где встретит форму пароля (см. renderPasswordForm).
 function renderLandingPage({ title, subtitle, tip, downloadPath, buttonLabel }) {
   return `<!doctype html>
 <html lang="ru">
@@ -398,6 +412,47 @@ function renderLandingPage({ title, subtitle, tip, downloadPath, buttonLabel }) 
   </script>
 </body>
 </html>`;
+}
+
+// Параметры инструкции установки - общие для /client, /client/readme.txt и README в архиве.
+const guideOptions = () => ({ ...parseFabricVersion(FABRIC_LAUNCHER_FILE), serverAddress: SERVER_ADDRESS, modsDir: MODS_DIR });
+
+// Ссылки в шагах инструкции делаем кликабельными; остальной текст экранируется.
+const linkify = (text) =>
+  esc(text).replace(/https?:\/\/[^\s,)]+/g, (url) => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+
+// Инструкция установки клиента прямо на странице (без автоскачивания). Архив по паролю -
+// README.txt с той же инструкцией + mods/*.jar; Minecraft с Fabric игрок ставит лаунчером.
+function renderClientPage() {
+  const guide = clientGuide(guideOptions());
+  const facts = guide.facts
+    .map(([k, v]) => `<div class="info-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`)
+    .join('');
+  const sections = guide.sections
+    .map(
+      (section) => `<div class="guide"><div class="mods-title">${esc(section.title)}</div><ol>${section.steps
+        .map((step) => `<li>${linkify(step)}</li>`)
+        .join('')}</ol></div>`,
+    )
+    .join('');
+  const modsList = guide.mods.length
+    ? `<div class="mods"><div class="mods-title">В архиве: моды (${guide.mods.length})</div><ul>${guide.mods
+        .map((m) => `<li>${esc(m)}</li>`)
+        .join('')}</ul></div>`
+    : '';
+  return page(
+    'Установка клиента',
+    `    <h1>Установка клиента</h1>
+    <p class="subtitle">${esc(guide.intro)}</p>
+    ${facts}
+    <a class="btn" href="/client/file">Скачать архив (моды + README)</a>
+    <a class="btn secondary" href="/client/readme.txt">Только README.txt</a>
+    <div class="lock">🔒 Для скачивания архива нужен пароль — спроси у администратора сервера.</div>
+    ${sections}
+    ${modsList}
+    ${HOME_LINK}`,
+    { wide: true },
+  );
 }
 
 // Своя форма пароля вместо нативного Basic Auth диалога браузера - тот стилизовать нельзя.
@@ -607,16 +662,18 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === '/client' && req.method === 'GET') {
-    return sendHtml(
-      res,
-      renderLandingPage({
-        title: 'Клиент-пак',
-        subtitle: 'Forge + моды + инструкция по установке (T-Launcher/официальный лаунчер) - в архиве.',
-        tip: 'внутри архива README.txt отвечает на большинство вопросов.',
-        downloadPath: '/client/file',
-        buttonLabel: 'Скачать вручную',
-      }),
-    );
+    return sendHtml(res, renderClientPage());
+  }
+
+  // README открыт без пароля: в нём только инструкция, адрес и версии.
+  if (url.pathname === '/client/readme.txt' && (req.method === 'GET' || req.method === 'HEAD')) {
+    const text = guideToText(clientGuide(guideOptions()));
+    res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="README.txt"',
+      'Cache-Control': 'no-store',
+    });
+    return res.end(req.method === 'HEAD' ? undefined : text);
   }
 
   if (url.pathname === '/apply' && req.method === 'GET') {
@@ -651,9 +708,9 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/client/file') {
     return handleProtectedFile(req, res, {
       getFile: () => (fs.existsSync(CLIENT_PACK_PATH) ? CLIENT_PACK_PATH : null),
-      notFoundMessage: 'client-pack.zip ещё не собран - проверь логи link-server (docker compose logs link-server) и наличие forge-*-installer.jar в корне репозитория',
-      downloadName: 'minecraft-client-pack.zip',
-      title: 'Клиент-пак',
+      notFoundMessage: 'client-pack.zip ещё не собран - проверь логи link-server (docker compose logs link-server) и наличие .jar в mods/',
+      downloadName: 'minecraft-mods.zip',
+      title: 'Моды для клиента',
       action: '/client/file',
     });
   }
@@ -670,14 +727,8 @@ const server = http.createServer((req, res) => {
 // scripts/build-client-pack.sh на хосте. Не критично для работы сайта, поэтому
 // ошибка здесь не должна мешать серверу запуститься (просто /client/file вернёт 404).
 try {
-  buildClientPack({
-    // forge-*-installer.jar лежит в /repo (корень примонтированного репозитория),
-    // а не рядом с CLIENT_PACK_PATH (тот теперь в writable /app, см. docker-compose.yml).
-    repoDir: path.dirname(BACKUP_DIR),
-    modsDir: MODS_DIR,
-    outPath: CLIENT_PACK_PATH,
-    serverAddress: SERVER_ADDRESS,
-  });
+  // CLIENT_PACK_PATH - в writable /app, а не в read-only /repo (см. docker-compose.yml).
+  buildClientPack({ ...guideOptions(), outPath: CLIENT_PACK_PATH });
 } catch (err) {
   console.error('[client-pack] Не удалось собрать client-pack.zip:', err.message);
 }

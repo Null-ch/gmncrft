@@ -1,116 +1,139 @@
 'use strict';
-// Пересобирает client-pack.zip (Forge-инсталлятор + моды + инструкция) при каждом
-// старте link-server - раньше это был ручной шаг (scripts/build-client-pack.sh на
-// хосте), теперь просто docker compose restart link-server после правки mods/.
+// Пересобирает client-pack.zip (README.txt + mods/*.jar, без инсталляторов) при каждом
+// старте link-server - раньше это был ручной шаг (scripts/build-client-pack.sh на хосте),
+// теперь просто docker compose restart link-server после правки mods/.
+// Та же инструкция показывается на сайте (/client и /client/readme.txt): её текст
+// собирается здесь - clientGuide() - чтобы сайт и README в архиве не расходились.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-function findInstaller(repoDir) {
-  const files = fs.readdirSync(repoDir).filter((f) => /^forge-.+-installer\.jar$/.test(f));
-  return files[0] || null;
+const FABRIC_INSTALLER_URL = 'https://fabricmc.net/use/installer/';
+
+function listModJars(modsDir) {
+  try {
+    return fs
+      .readdirSync(modsDir)
+      .filter((f) => f.endsWith('.jar'))
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return []; // mods/ может отсутствовать
+  }
 }
 
-function readme({ installer, forgeLabel, serverAddress }) {
-  return `====================================================
- УСТАНОВКА КЛИЕНТА ДЛЯ ИГРЫ НА СЕРВЕРЕ (Forge ${forgeLabel})
-====================================================
-
-Адрес сервера: ${serverAddress}
-
-В архиве два способа поставить игру. Если не уверен, что выбрать —
-используй ВАРИАНТ 1 (T-Launcher): он проще и не требует лицензии Minecraft.
-
-
-ВАРИАНТ 1. Через T-Launcher (проще всего, подходит без лицензии)
-------------------------------------------------------------------
-
-1. Скачай T-Launcher с официального сайта: https://tlauncher.org
-   (там же выбери версию под свою систему - Windows/macOS/Linux) и установи.
-2. Открой T-Launcher, введи любой никнейм и нажми "Войти" - лицензия Mojang
-   не нужна, сервер работает в офлайн-режиме. Никнейм выбери сразу постоянный:
-   доступ на сервер выдаётся именно на этот ник (whitelist).
-3. В нижней части окна найди выбор версии игры и выбери
-   "Forge ${forgeLabel}" из списка.
-   Если такой версии Forge нет в списке T-Launcher - открой раздел "Модификации" /
-   "Установить Forge/Fabric" и укажи версию Minecraft 1.21.1, T-Launcher поставит
-   Forge сам. Если и там нет нужного билда - используй ВАРИАНТ 2 ниже, там версия
-   Forge гарантированно совпадёт с серверной (это важно, иначе игра может не зайти).
-4. Нажми "Играть" один раз и дождись загрузки главного меню - это нужно,
-   чтобы T-Launcher создал папку mods.
-5. Закрой игру. Открой папку .minecraft (в T-Launcher: значок папки/шестерёнка
-   рядом с кнопкой "Играть" -> "Открыть папку игры") и скопируй туда все .jar
-   файлы из папки mods/ этого архива - положи их в папку mods внутри .minecraft.
-6. Запусти игру снова через профиль "Forge ${forgeLabel}", в главном меню
-   выбери "Играть по сети" -> "Добавить сервер", впиши адрес: ${serverAddress}
-
-
-ВАРИАНТ 2. Через официальный лаунчер Minecraft (нужна лицензия)
-------------------------------------------------------------------
-
-1. Установи официальный лаунчер: https://www.minecraft.net/ru-ru/download
-   (нужен купленный аккаунт Minecraft Java Edition).
-2. Запусти файл ${installer} из этого архива двойным щелчком, в открывшемся
-   окне выбери "Install Client", подтверди путь до стандартной папки .minecraft
-   и дождись надписи об успешной установке.
-3. Открой официальный лаунчер, выбери появившийся профиль
-   "forge-${forgeLabel}" и запусти игру один раз, чтобы создались нужные папки.
-4. Закрой игру и скопируй все .jar файлы из папки mods/ этого архива в:
-     Windows:      %appdata%\\.minecraft\\mods
-     Linux/macOS:  ~/.minecraft/mods
-5. Запусти игру через профиль Forge, зайди в "Играть по сети" -> "Добавить сервер",
-   впиши адрес: ${serverAddress}
-
-
-ПЕРВЫЙ ВХОД НА СЕРВЕР
-------------------------------------------------------------------
-
-На сервере включён whitelist: перед первым заходом сообщи администратору
-свой ник, чтобы он добавил тебя в список. Иначе при подключении будет
-ошибка "You are not white-listed on this server!".
-
-Приятной игры!
-`;
+// "fabric-api-0.155.3+26.1.2.jar" -> "0.155.3+26.1.2": версию Fabric API полезно знать
+// игроку, который ставит моды не из архива.
+function fabricApiVersion(modJars) {
+  const jar = modJars.find((f) => /^fabric-api-.+\.jar$/.test(f));
+  return jar ? jar.replace(/^fabric-api-(.+)\.jar$/, '$1') : null;
 }
 
-/** repoDir - где лежит forge-*-installer.jar; modsDir - откуда брать .jar модов. */
-function buildClientPack({ repoDir, modsDir, outPath, serverAddress }) {
-  const installer = findInstaller(repoDir);
-  if (!installer) {
-    console.warn(`[client-pack] forge-*-installer.jar не найден в ${repoDir} - пропускаю сборку`);
+/**
+ * Инструкция установки клиента: версии, шаги по разделам и список модов. Из неё
+ * рендерятся и HTML на /client (server.js), и README.txt (guideToText ниже).
+ */
+function clientGuide({ mcVersion, loaderVersion, serverAddress, modsDir }) {
+  const loaderLabel = loaderVersion || 'последняя стабильная';
+  const mods = modsDir ? listModJars(modsDir) : [];
+  const apiVersion = fabricApiVersion(mods);
+  return {
+    title: `Установка клиента (Fabric, Minecraft ${mcVersion})`,
+    facts: [
+      ['Адрес сервера', serverAddress],
+      ['Версия Minecraft', mcVersion],
+      ['Версия Fabric Loader', loaderLabel],
+      ...(apiVersion ? [['Версия Fabric API', apiVersion]] : []),
+      ['Java', '25 или новее'],
+    ],
+    intro:
+      'В архиве с сервера — этот README и папка mods с модами (.jar). Сам Minecraft с Fabric ставится лаунчером. ' +
+      'Если не уверен, что выбрать — используй вариант 1 (T-Launcher): он проще и не требует лицензии.',
+    sections: [
+      {
+        title: 'Вариант 1. T-Launcher (без лицензии)',
+        steps: [
+          'Скачай и установи T-Launcher с официального сайта: https://tlauncher.org',
+          'Введи никнейм и нажми «Войти». Ник выбери сразу постоянный: доступ на сервер выдаётся именно на него (whitelist).',
+          `В списке версий внизу окна выбери «Fabric ${mcVersion}» — T-Launcher сам поставит Fabric и нужную Java.`,
+          'Нажми «Играть» один раз и дождись главного меню — так создастся папка mods. Закрой игру.',
+          'Открой папку игры (значок папки рядом с кнопкой «Играть» → «Открыть папку игры»), зайди в mods и скопируй туда все .jar из папки mods архива.',
+          `Запусти игру через профиль Fabric ${mcVersion} → «Сетевая игра» → «Добавить сервер» → адрес ${serverAddress}.`,
+        ],
+      },
+      {
+        title: 'Вариант 2. Официальный лаунчер (нужна лицензия)',
+        steps: [
+          'Установи официальный лаунчер: https://www.minecraft.net/ru-ru/download',
+          `Скачай Fabric Installer: ${FABRIC_INSTALLER_URL} (для .jar-версии нужна Java 25+, например https://adoptium.net).`,
+          `В инсталляторе вкладка «Client»: Minecraft Version ${mcVersion}, Loader Version ${loaderLabel}, стандартная папка .minecraft → «Install».`,
+          `В лаунчере выбери профиль «fabric-loader-${mcVersion}», запусти игру один раз и закрой.`,
+          'Скопируй все .jar из папки mods архива в папку mods игры: Windows — %appdata%\\.minecraft\\mods, Linux/macOS — ~/.minecraft/mods.',
+          `Запусти профиль Fabric → «Сетевая игра» → «Добавить сервер» → адрес ${serverAddress}.`,
+        ],
+      },
+      {
+        title: 'Первый вход на сервер',
+        steps: [
+          'На сервере включён whitelist: сначала подай заявку на сайте сервера (/apply) со своим ником, дождись одобрения.',
+          'Без этого при подключении будет ошибка «You are not white-listed on this server!».',
+          `Моды нужны именно из архива сервера: Forge-моды и моды под другую версию Minecraft с Fabric ${mcVersion} не загрузятся.`,
+          'Старые моды (например, от прошлой версии сервера) из папки mods игры удали — с ними игра не запустится.',
+        ],
+      },
+    ],
+    mods,
+  };
+}
+
+function guideToText(guide) {
+  const line = '='.repeat(60);
+  const out = [line, ` ${guide.title.toUpperCase()}`, line, ''];
+  for (const [k, v] of guide.facts) out.push(`${`${k}:`.padEnd(22)}${v}`);
+  out.push('', guide.intro);
+  for (const section of guide.sections) {
+    out.push('', '', section.title, '-'.repeat(60));
+    section.steps.forEach((step, i) => out.push(`${i + 1}. ${step}`));
+  }
+  if (guide.mods.length) {
+    out.push('', '', `Моды сервера (${guide.mods.length})`, '-'.repeat(60));
+    for (const jar of guide.mods) out.push(`- ${jar}`);
+  }
+  out.push('', 'Приятной игры!', '');
+  return out.join('\n');
+}
+
+/**
+ * В архив: README.txt (инструкция, версии, список модов) + mods/*.jar.
+ * guideOptions - то же, что для clientGuide (mcVersion, loaderVersion, serverAddress).
+ */
+function buildClientPack({ modsDir, outPath, ...guideOptions }) {
+  const modJars = listModJars(modsDir);
+  if (!modJars.length) {
+    console.warn(`[client-pack] В ${modsDir} нет .jar - пропускаю сборку`);
     return false;
   }
 
-  const forgeLabel = installer.replace(/^forge-(.+)-installer\.jar$/, '$1');
-
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'client-pack-'));
   try {
-    fs.copyFileSync(path.join(repoDir, installer), path.join(tmpDir, installer));
-
     const modsOut = path.join(tmpDir, 'mods');
     fs.mkdirSync(modsOut);
-    let modJars = [];
-    try {
-      modJars = fs.readdirSync(modsDir).filter((f) => f.endsWith('.jar'));
-    } catch {
-      // mods/ может отсутствовать - пак всё равно соберём, просто без модов
-    }
     for (const jar of modJars) {
       fs.copyFileSync(path.join(modsDir, jar), path.join(modsOut, jar));
     }
-
-    fs.writeFileSync(path.join(tmpDir, 'README.txt'), readme({ installer, forgeLabel, serverAddress }), 'utf8');
+    // CRLF - чтобы README нормально открывался и в Блокноте на старых Windows.
+    const readme = guideToText(clientGuide({ ...guideOptions, modsDir })).replace(/\n/g, '\r\n');
+    fs.writeFileSync(path.join(tmpDir, 'README.txt'), readme, 'utf8');
 
     fs.rmSync(outPath, { force: true });
     execFileSync('zip', ['-r', '-q', outPath, '.'], { cwd: tmpDir });
 
     const { size } = fs.statSync(outPath);
-    console.log(`[client-pack] Собран ${outPath} (${modJars.length} модов, Forge ${forgeLabel}, ${(size / 1024 / 1024).toFixed(1)} МБ)`);
+    console.log(`[client-pack] Собран ${outPath} (${modJars.length} модов + README.txt, ${(size / 1024 / 1024).toFixed(1)} МБ)`);
     return true;
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
-module.exports = { buildClientPack };
+module.exports = { buildClientPack, clientGuide, guideToText };
