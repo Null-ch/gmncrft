@@ -4,11 +4,15 @@
 // своей формой пароля в стиле сайта (не нативным browser-alert Basic Auth, его нельзя
 // стилизовать). Пароль бот тоже умеет передавать напрямую заголовком (без формы).
 // Ссылки бессрочные: /backup/file всегда резолвит САМЫЙ НОВЫЙ файл в BACKUP_DIR.
+// Плюс заявки на игру (/apply с сайта, /api/applications для Discord-бота): одобренный
+// ник добавляется в whitelist через RCON - контейнер mc в той же Docker-сети.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { buildClientPack } = require('./build-client-pack');
+const { rconCommand } = require('./rcon');
+const { createApplicationStore, ApplicationError } = require('./applications');
 
 const PORT = Number(process.env.PORT || 8080);
 const DOWNLOAD_PASSWORD = process.env.DOWNLOAD_PASSWORD;
@@ -18,17 +22,79 @@ const MODS_DIR = process.env.MODS_DIR || '/repo/mods';
 const SERVER_ADDRESS = process.env.SERVER_ADDRESS || '2.26.224.164:25565';
 const MOTD = process.env.MOTD || 'Minecraft-сервер';
 const FORGE_INSTALLER_FILE = process.env.FORGE_INSTALLER_FILE || '';
+const APPLICATIONS_FILE = process.env.APPLICATIONS_FILE || '/data/applications.json';
+const WHITELIST_FILE = process.env.WHITELIST_FILE || '/repo/data/whitelist.json';
+// Токен, которым Discord-бот ходит в /api/applications. Без него API выключено,
+// а заявки с сайта копятся, но уведомлять о них некому.
+const BOT_API_TOKEN = process.env.BOT_API_TOKEN || '';
+const RCON = {
+  host: process.env.RCON_HOST || 'mc',
+  port: Number(process.env.RCON_PORT || 25575),
+  password: process.env.RCON_PASSWORD || '',
+};
 
 if (!DOWNLOAD_PASSWORD) {
   console.error('DOWNLOAD_PASSWORD не задан - без него сервер не может проверять доступ к файлам. Останавливаюсь.');
   process.exit(1);
 }
 
-function passwordMatches(candidate) {
+if (!BOT_API_TOKEN) {
+  console.warn('BOT_API_TOKEN не задан - API заявок для Discord-бота выключено.');
+}
+
+function secretMatches(candidate, secret) {
   const a = Buffer.from(String(candidate ?? ''));
-  const b = Buffer.from(DOWNLOAD_PASSWORD);
+  const b = Buffer.from(secret);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+const passwordMatches = (candidate) => secretMatches(candidate, DOWNLOAD_PASSWORD);
+
+// Имена из whitelist.json сервера (/repo/data смонтирован read-only). Сравнение точное:
+// офлайн-UUID зависит от регистра ника, "nulls" и "Nulls" - разные игроки.
+function isWhitelisted(nickname) {
+  try {
+    const entries = JSON.parse(fs.readFileSync(WHITELIST_FILE, 'utf8'));
+    return entries.some((entry) => entry.name === nickname);
+  } catch {
+    return false;
+  }
+}
+
+// Команда мода SimpleWhitelist: пишет в whitelist офлайн-UUID по нику (обычный
+// "whitelist add" в offline-режиме может записать UUID лицензионного аккаунта).
+async function addToWhitelist(nickname) {
+  const raw = await rconCommand({ ...RCON, command: `simplewhitelist add ${nickname}` });
+  const reply = raw.replace(/§./g, '').trim();
+  if (/added to whitelist|already whitelisted/i.test(reply)) return reply;
+  throw new Error(`Сервер не добавил ${nickname} в whitelist: ${reply || 'пустой ответ'}`);
+}
+
+const applications = createApplicationStore({ filePath: APPLICATIONS_FILE, isWhitelisted });
+
+// Не больше APPLY_LIMIT заявок с одного IP за APPLY_WINDOW_MS - защита от спама формой.
+const APPLY_LIMIT = 3;
+const APPLY_WINDOW_MS = 60 * 60 * 1000;
+const applyHits = new Map();
+
+function clientIp(req) {
+  // Снаружи запросы приходят только через caddy, он дописывает реальный IP в X-Forwarded-For.
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket.remoteAddress || 'unknown';
+}
+
+function recentApplies(ip) {
+  const now = Date.now();
+  const hits = (applyHits.get(ip) || []).filter((t) => now - t < APPLY_WINDOW_MS);
+  if (hits.length) applyHits.set(ip, hits);
+  else applyHits.delete(ip);
+  return hits;
+}
+
+// Считаются только созданные заявки - опечатка в нике не должна съедать лимит.
+function recordApply(ip) {
+  applyHits.set(ip, [...recentApplies(ip), Date.now()]);
 }
 
 // "forge-1.21.1-52.1.16-installer.jar" -> { mcVersion: "1.21.1", forgeVersion: "52.1.16" }
@@ -213,7 +279,7 @@ const BASE_STYLE = `
     font-weight: bold;
     line-height: 1.5;
   }
-  input[type=password] {
+  input[type=password], input[type=text], textarea {
     width: 100%;
     padding: 10px;
     margin: 14px 0;
@@ -226,7 +292,16 @@ const BASE_STYLE = `
     text-align: center;
     letter-spacing: 2px;
   }
-  input[type=password]:focus { outline: 2px solid #7CFC00; }
+  input[type=text], textarea { margin: 4px 0 12px; letter-spacing: 0; text-align: left; }
+  textarea { resize: vertical; min-height: 70px; }
+  input[type=password]:focus, input[type=text]:focus, textarea:focus { outline: 2px solid #7CFC00; }
+  label { display: block; text-align: left; color: #2b2b2b; font-size: 13px; font-weight: bold; }
+  .nav { margin-top: 18px; }
+  .btn.secondary { background: #4a4a4a; font-size: 13px; padding: 8px 14px; }
+  .status { padding: 10px; border: 2px solid #000; font-size: 15px; font-weight: bold; margin-bottom: 14px; }
+  .status.pending { background: #5a4a1f; color: #ffcf4d; }
+  .status.approved { background: #1f4a1f; color: #7CFC00; }
+  .status.rejected { background: #5a1f1f; color: #ff8a8a; }
   .error {
     background: #5a1f1f;
     border: 2px solid #000;
@@ -236,6 +311,25 @@ const BASE_STYLE = `
     margin-bottom: 12px;
   }
 `;
+
+const HOME_LINK = '<div class="nav"><a class="btn secondary" href="/">← На главную</a></div>';
+
+function page(title, body) {
+  return `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<style>${BASE_STYLE}</style>
+</head>
+<body>
+  <div class="card">
+${body}
+  </div>
+</body>
+</html>`;
+}
 
 function renderHomePage() {
   const { mcVersion, forgeVersion } = parseForgeVersion(FORGE_INSTALLER_FILE);
@@ -266,11 +360,12 @@ function renderHomePage() {
 
     ${modsList}
 
+    <a class="btn" href="/apply">Подать заявку на игру</a>
     <a class="btn" href="/backup">Скачать бэкап мира</a>
     <a class="btn" href="/client">Скачать клиент (Forge + моды)</a>
     <div class="lock">🔒 Для скачивания файлов нужен пароль — спроси у администратора сервера.</div>
 
-    <p class="tip">Совет: перед первым входом сообщи администратору свой ник — на сервере включён whitelist.</p>
+    <p class="tip">Совет: на сервере включён whitelist — сначала подай заявку со своим ником, после одобрения можно заходить.</p>
   </div>
 </body>
 </html>`;
@@ -294,6 +389,7 @@ function renderLandingPage({ title, subtitle, tip, downloadPath, buttonLabel }) 
     <a class="btn" id="dl" href="${esc(downloadPath)}">${esc(buttonLabel)}</a>
     <div class="server">Адрес сервера: ${esc(SERVER_ADDRESS)}</div>
     <p class="tip">Совет: ${esc(tip)}</p>
+    ${HOME_LINK}
   </div>
   <script>
     window.addEventListener('load', function () {
@@ -324,9 +420,125 @@ function renderPasswordForm({ title, action, error }) {
       <button class="btn" type="submit">Скачать</button>
     </form>
     <div class="lock">🔒 Пароль знает тот, кто настраивал сервер (его же печатает Discord-бот).</div>
+    ${HOME_LINK}
   </div>
 </body>
 </html>`;
+}
+
+function renderApplyForm({ error, values = {} } = {}) {
+  return page(
+    'Заявка на игру',
+    `    <h1>Заявка на игру</h1>
+    <p class="subtitle">На сервере включён whitelist. Оставь ник — администратор одобрит заявку, и тебя добавят в список.</p>
+    ${error ? `<div class="error">${esc(error)}</div>` : ''}
+    <form method="POST" action="/apply">
+      <label for="nickname">Ник в Minecraft (точно как в лаунчере, с учётом регистра)</label>
+      <input type="text" id="nickname" name="nickname" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" value="${esc(values.nickname || '')}" required autofocus>
+      <label for="contact">Как с тобой связаться (ник в Discord, Telegram…)</label>
+      <input type="text" id="contact" name="contact" maxlength="200" value="${esc(values.contact || '')}" required>
+      <label for="comment">Комментарий (необязательно)</label>
+      <textarea id="comment" name="comment" maxlength="200">${esc(values.comment || '')}</textarea>
+      <button class="btn" type="submit">Отправить заявку</button>
+    </form>
+    ${HOME_LINK}`,
+  );
+}
+
+const STATUS_TEXT = {
+  pending: '⏳ Ждёт решения администратора',
+  approved: '✅ Одобрена — можно заходить на сервер',
+  rejected: '❌ Отклонена',
+};
+
+function renderApplicationStatus(app) {
+  return page(
+    'Статус заявки',
+    `    <h1>Заявка: ${esc(app.nickname)}</h1>
+    <div class="status ${esc(app.status)}">${STATUS_TEXT[app.status]}</div>
+    ${app.status === 'pending' ? '<p class="subtitle">Сохрани ссылку на эту страницу и загляни позже — статус обновится здесь.</p>' : ''}
+    ${app.status === 'approved' ? `<div class="server">Адрес сервера: ${esc(SERVER_ADDRESS)}</div>` : ''}
+    ${HOME_LINK}`,
+  );
+}
+
+function handleApplyPost(req, res) {
+  return readBody(req)
+    .then((body) => {
+      const values = Object.fromEntries(new URLSearchParams(body));
+      if (!String(values.contact || '').trim()) {
+        return sendHtml(res, renderApplyForm({ error: 'Укажи, как с тобой связаться.', values }), 400);
+      }
+      const ip = clientIp(req);
+      if (recentApplies(ip).length >= APPLY_LIMIT) {
+        return sendHtml(res, renderApplyForm({ error: 'Слишком много заявок с твоего адреса, попробуй через час.', values }), 429);
+      }
+      try {
+        const app = applications.create({ ...values, source: 'site' });
+        recordApply(ip);
+        console.log(`[apply] Новая заявка с сайта: ${app.nickname}`);
+        res.writeHead(303, { Location: `/apply/${app.id}` });
+        return res.end();
+      } catch (err) {
+        if (!(err instanceof ApplicationError)) throw err;
+        return sendHtml(res, renderApplyForm({ error: err.message, values }), err.status);
+      }
+    })
+    .catch((err) => {
+      console.error('[apply] Ошибка при приёме заявки:', err);
+      res.writeHead(500);
+      res.end();
+    });
+}
+
+function sendJson(res, status, data) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(data));
+}
+
+// API для Discord-бота, заголовок Authorization: Bearer <BOT_API_TOKEN>.
+//   GET  /api/applications?status=pending     - список заявок
+//   POST /api/applications                     - новая заявка из Discord
+//   POST /api/applications/<id>/approve|reject - решение (approve добавляет в whitelist)
+async function handleApi(req, res, url) {
+  if (!BOT_API_TOKEN) return sendJson(res, 503, { error: 'API заявок выключено: не задан BOT_API_TOKEN' });
+  const auth = String(req.headers.authorization || '');
+  if (!auth.startsWith('Bearer ') || !secretMatches(auth.slice(7), BOT_API_TOKEN)) {
+    return sendJson(res, 401, { error: 'Неверный токен' });
+  }
+
+  try {
+    if (url.pathname === '/api/applications' && req.method === 'GET') {
+      return sendJson(res, 200, applications.list({ status: url.searchParams.get('status') || undefined }));
+    }
+
+    if (url.pathname === '/api/applications' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const app = applications.create({ ...body, source: 'discord' });
+      console.log(`[apply] Новая заявка из Discord: ${app.nickname}`);
+      return sendJson(res, 201, app);
+    }
+
+    const decisionMatch = /^\/api\/applications\/([0-9a-f]{16})\/(approve|reject)$/.exec(url.pathname);
+    if (decisionMatch && req.method === 'POST') {
+      const [, id, action] = decisionMatch;
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const decision = action === 'approve' ? 'approved' : 'rejected';
+      const apply = action === 'approve' ? (app) => addToWhitelist(app.nickname) : undefined;
+      const app = await applications.decide(id, decision, body.decidedBy, apply);
+      console.log(`[apply] ${app.nickname}: ${decision} (${app.decidedBy || 'без имени'})`);
+      return sendJson(res, 200, app);
+    }
+
+    return sendJson(res, 404, { error: 'Not found' });
+  } catch (err) {
+    if (err instanceof ApplicationError) {
+      return sendJson(res, err.status, { error: err.message, application: err.application });
+    }
+    if (err instanceof SyntaxError) return sendJson(res, 400, { error: 'Некорректный JSON' });
+    console.error('[api] Ошибка:', err);
+    return sendJson(res, 502, { error: err.message });
+  }
 }
 
 function handleProtectedFile(req, res, { getFile, notFoundMessage, downloadName, title, action }) {
@@ -405,6 +617,24 @@ const server = http.createServer((req, res) => {
         buttonLabel: 'Скачать вручную',
       }),
     );
+  }
+
+  if (url.pathname === '/apply' && req.method === 'GET') {
+    return sendHtml(res, renderApplyForm());
+  }
+
+  if (url.pathname === '/apply' && req.method === 'POST') {
+    return handleApplyPost(req, res);
+  }
+
+  const statusMatch = /^\/apply\/([0-9a-f]{16})$/.exec(url.pathname);
+  if (statusMatch && req.method === 'GET') {
+    const app = applications.get(statusMatch[1]);
+    return app ? sendHtml(res, renderApplicationStatus(app)) : notFound(res, 'Заявка не найдена');
+  }
+
+  if (url.pathname.startsWith('/api/')) {
+    return handleApi(req, res, url);
   }
 
   // Файлы - защищены собственной формой пароля (GET показывает форму, POST проверяет).

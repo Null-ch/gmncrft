@@ -1,4 +1,5 @@
 .env
 data/
 backups/
+link-data/
 *.log

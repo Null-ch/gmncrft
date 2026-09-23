@@ -13,7 +13,8 @@ minecraft-server/
 ├── forge-1.21.1-52.1.16-installer.jar  # Forge ставится из него, без скачивания
 ├── .env.example                        # шаблон настроек -> скопировать в .env
 ├── mods/                               # .jar моды (копируются на сервер и в клиент-пак)
-├── link-server/                        # сайт + сборка client-pack.zip (Node, без зависимостей)
+├── link-server/                        # сайт, заявки, сборка client-pack.zip (Node, без зависимостей)
+├── link-data/                          # заявки на игру (создаётся автоматически)
 ├── scripts/
 │   ├── install-docker-ubuntu.sh        # Docker + ufw на чистом VPS
 │   ├── console.sh                      # консоль сервера через RCON
@@ -44,6 +45,7 @@ docker compose logs -f mc                    # ждать "Done (...)! For help,
 | `ENABLE_WHITELIST`, `WHITELIST`, `OPS` | whitelist и операторы, см. «Whitelist» |
 | `RCON_PASSWORD` | для консоли и бэкапов, наружу порт не открыт |
 | `LINK_DOMAIN`, `DOWNLOAD_PASSWORD`, `SERVER_ADDRESS` | сайт сервера, см. «Сайт» |
+| `BOT_API_TOKEN` | токен Discord-бота для заявок на игру, см. «Заявки на игру» |
 | `BACKUP_INTERVAL`, `PRUNE_BACKUPS_DAYS` | частота и срок хранения бэкапов |
 
 ## Управление
@@ -67,23 +69,37 @@ bash scripts/backup-now.sh              # бэкап прямо сейчас
 
 **`ONLINE_MODE=false`**: `WHITELIST`/`OPS` в `.env` оставить пустыми — образ получает
 по ним лицензионные UUID, а офлайн-сервер считает UUID по нику, и игрок получит
-`You are not white-listed on this server!`. Вместо этого `ENABLE_WHITELIST=true` и
-добавлять игроков через консоль:
+`You are not white-listed on this server!`. Вместо этого `ENABLE_WHITELIST=true`, в
+`mods/` мод [SimpleWhitelist](https://modrinth.com/plugin/simplewhitelist)
+(`simplewhitelist-forge-1.21.1-1.0.0.jar`, только серверный), и игроки добавляются
+через заявки (см. ниже) или вручную:
 
 ```bash
 bash scripts/console.sh
-whitelist add Nick
+simplewhitelist add Nick     # офлайн-UUID по нику; регистр важен
 op Nick
 ```
 
-Список хранится в `data/whitelist.json` и `data/ops.json` между перезапусками.
+Обычный `whitelist add` в офлайн-режиме не подходит: если ник совпадает с чьим-то
+лицензионным аккаунтом, он запишет лицензионный UUID, и игрок не зайдёт. Списки хранятся
+в `data/whitelist.json` и `data/ops.json`.
 
-> ⚠️ Если ник совпадает с чьим-то лицензионным аккаунтом, `whitelist add` запишет
-> лицензионный UUID, и игрок не зайдёт. Тогда: `whitelist off` → игрок заходит один раз →
-> `whitelist add Nick` → `whitelist on`.
->
-> Без мода авторизации whitelist в офлайн-режиме проверяет только ник: любой, кто знает
-> ник из списка, может зайти под ним.
+> ⚠️ Whitelist в офлайн-режиме проверяет только ник: любой, кто знает ник из списка,
+> может зайти под ним.
+
+### Заявки на игру
+
+Игрок подаёт заявку на сайте (`/apply`) или в Discord (`/minecraft apply`). Бот
+(репозиторий `kgk44`) раз в 30 секунд забирает новые заявки и присылает их в личку
+всем одобряющим (`MINECRAFT_APPROVER_IDS` в `.env` бота) с кнопками «Одобрить» /
+«Отклонить». При одобрении `link-server` выполняет через RCON `simplewhitelist add <ник>`,
+RCON наружу по-прежнему не открыт. Подавший с сайта видит статус по ссылке
+`/apply/<id>`, подавший из Discord получает сообщение от бота.
+
+Настройка: `BOT_API_TOKEN` здесь (`openssl rand -hex 24`) = `MINECRAFT_API_TOKEN` в
+`.env` бота, затем `docker compose up -d --build link-server`. Заявки хранятся в
+`link-data/applications.json`. С одного IP — не больше 3 заявок в час, всего не больше
+30 необработанных.
 
 ## Моды
 
@@ -114,8 +130,10 @@ docker compose restart mc link-server   # сервер + пересборка к
 `link-server`:
 
 - `/` — MOTD, версия, адрес, список модов;
+- `/apply` — заявка на игру, `/apply/<id>` — её статус;
 - `/backup` — скачивание самого свежего архива из `backups/`;
-- `/client` — скачивание `client-pack.zip` (Forge-инсталлятор + моды + инструкция).
+- `/client` — скачивание `client-pack.zip` (Forge-инсталлятор + моды + инструкция);
+- `/api/applications` — API заявок для бота (`Authorization: Bearer <BOT_API_TOKEN>`).
 
 Страницы открыты, скачивание файла просит `DOWNLOAD_PASSWORD` (простой, его печатает
 Discord-бот). `client-pack.zip` собирается автоматически при старте `link-server`.

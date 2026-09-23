@@ -92,9 +92,18 @@ services:
       SERVER_ADDRESS: "${SERVER_ADDRESS:-2.26.224.164:25565}"
       MOTD: "${MOTD:-A Forge 1.21.1 Server}"
       FORGE_INSTALLER_FILE: "${FORGE_INSTALLER_FILE:-forge-1.21.1-52.1.16-installer.jar}"
+      # Заявки на игру: хранятся в /data (том ниже), одобренный ник добавляется в
+      # whitelist через RCON контейнера mc. BOT_API_TOKEN - для Discord-бота (/api/applications).
+      APPLICATIONS_FILE: "/data/applications.json"
+      WHITELIST_FILE: "/repo/data/whitelist.json"
+      BOT_API_TOKEN: "${BOT_API_TOKEN:-}"
+      RCON_HOST: "mc"
+      RCON_PORT: "25575"
+      RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD in .env}"
     # Порт наружу НЕ публикуется - снаружи достучаться можно только через caddy.
     volumes:
       - .:/repo:ro
+      - ./link-data:/data
     networks:
       - mc-net
 
