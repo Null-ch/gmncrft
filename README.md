@@ -1,317 +1,143 @@
-# Minecraft Forge 1.21.1 Server — деплой на Ubuntu VPS (Docker)
+# Minecraft Forge 1.21.1 Server (Docker)
 
-Сервер запускается в Docker на базе образа
-[itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server)
-(самый популярный и активно поддерживаемый Docker-образ для Minecraft-серверов).
-Forge ставится из уже скачанного `forge-1.21.1-52.1.16-installer.jar` (лежит в корне
-репозитория и монтируется в контейнер) — интернет на VPS для скачивания Forge не нужен.
-Автоматические бэкапы через [itzg/mc-backup](https://github.com/itzg/docker-mc-backup).
-RCON включён для управления консолью и бэкапов, наружу не публикуется. Есть сайт
-сервера (MOTD, версия, список модов) и бэкап/клиент-пак по HTTPS через собственный
-домен (Caddy) — страницы открыты всем, скачивание файлов просит простой пароль через
-свою форму в стиле сайта, а не нативное окно браузера (см. 6.1).
+Сервер Forge `1.21.1-52.1.16` на образе [itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server)
+с автобэкапами ([itzg/mc-backup](https://github.com/itzg/docker-mc-backup)) и сайтом сервера
+по HTTPS (главная страница, скачивание бэкапа и клиент-пака).
 
-## Состав репозитория
+## Состав
 
 ```
 minecraft-server/
-├── docker-compose.yml                      # сервисы: mc, backup, link-server, caddy
-├── Caddyfile                                # HTTPS для домена (Caddy - просто reverse proxy)
-├── forge-1.21.1-52.1.16-installer.jar       # Forge-инсталлятор, монтируется в контейнер
-├── .env.example                             # шаблон настроек (скопировать в .env)
-├── .env                                     # реальные настройки (не коммитить! секреты уже сгенерированы)
-├── mods/                                    # сюда класть .jar моды — см. раздел "Моды" ниже
-├── config/                                  # конфиги модов (loginsystem.properties и т.п.), копируются в /data/config
-├── data/                                    # мир, конфиги, логи (создаётся автоматически при первом запуске)
-├── backups/                                 # архивы бэкапов мира
-├── link-server/
-│   ├── Dockerfile                          # node + zip (для автосборки client-pack.zip)
-│   ├── build-client-pack.js                 # собирает client-pack.zip при каждом старте
-│   └── server.js                            # главная + /backup, /client (страницы) + файлы (см. 6.1)
-└── scripts/
-    ├── install-docker-ubuntu.sh   # установка Docker + firewall на чистом VPS
-    ├── console.sh                  # консоль сервера через RCON
-    ├── backup-now.sh                # ручной бэкап
-    └── update.sh                     # обновление образов/пересоздание контейнера
+├── docker-compose.yml                  # сервисы: mc, backup, link-server, caddy
+├── Caddyfile                           # HTTPS для домена (reverse proxy на link-server)
+├── forge-1.21.1-52.1.16-installer.jar  # Forge ставится из него, без скачивания
+├── .env.example                        # шаблон настроек -> скопировать в .env
+├── mods/                               # .jar моды (копируются на сервер и в клиент-пак)
+├── link-server/                        # сайт + сборка client-pack.zip (Node, без зависимостей)
+├── scripts/
+│   ├── install-docker-ubuntu.sh        # Docker + ufw на чистом VPS
+│   ├── console.sh                      # консоль сервера через RCON
+│   ├── backup-now.sh                   # ручной бэкап
+│   └── update.sh                       # обновить образы и пересоздать mc
+├── data/                               # мир, конфиги, логи (создаётся при первом запуске)
+└── backups/                            # архивы бэкапов
 ```
 
-`client-pack.zip` больше не хранится в репозитории — `link-server` собирает его сам
-при каждом старте контейнера (Forge-инсталлятор + `mods/*.jar` + сгенерированная
-инструкция), см. раздел 5.1.
-
-## 1. Разовая подготовка VPS (Ubuntu 22.04/24.04)
-
-Скопируйте эту папку на сервер (вместе с `forge-*-installer.jar`):
+## Установка на VPS (Ubuntu 22.04/24.04)
 
 ```bash
 scp -r minecraft-server user@your-vps-ip:~/
 ssh user@your-vps-ip
 cd minecraft-server
-```
-
-Установите Docker и откройте нужный порт в firewall:
-
-```bash
-sudo bash scripts/install-docker-ubuntu.sh
-```
-
-Скрипт ставит Docker Engine + Compose plugin, включает `ufw` и открывает
-`25565/tcp` (игровой порт) и SSH. Порт RCON (`25575`) наружу не открывается —
-он используется только внутри Docker-сети, доступ к нему снаружи только через
-`docker compose exec` (см. `scripts/console.sh`).
-
-Если у VPS мало RAM (< 6 ГБ), рекомендуется добавить swap:
-
-```bash
-sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
-sudo mkswap /swapfile && sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-## 2. Настройка
-
-Отредактируйте `.env` (или сначала `cp .env.example .env`, если начинаете с нуля):
-
-- `FORGE_INSTALLER_FILE` — имя installer-jar в корне репозитория (должно совпадать
-  с реальным файлом, сейчас `forge-1.21.1-52.1.16-installer.jar`).
-- `MEMORY` — сколько RAM выделить Java (оставьте VPS минимум 1-1.5 ГБ сверху под ОС/Docker).
-- `RCON_PASSWORD` — уже сгенерирован случайно, менять не обязательно, но не публикуйте его.
-- `WHITELIST` / `OPS` — никнеймы через запятую (только при `ONLINE_MODE=true`, см. 4.1).
-
-## 3. Запуск
-
-```bash
+sudo bash scripts/install-docker-ubuntu.sh   # Docker, ufw: 22, 25565, 80, 443
+cp .env.example .env                         # и отредактировать
 docker compose up -d
-docker compose logs -f mc
+docker compose logs -f mc                    # ждать "Done (...)! For help, type "help""
 ```
 
-Первый запуск займёт несколько минут — устанавливается Forge из смонтированного
-installer-jar, принимается EULA, генерируется мир. Готовность видна по строке
-`Done (...)! For help, type "help"`.
+Основные параметры `.env`:
 
-Сервер слушает `0.0.0.0:25565` — подключайтесь по IP вашего VPS.
+| Переменная | Что это |
+|---|---|
+| `MEMORY` | RAM для Java (оставьте ОС 1–1.5 ГБ сверху) |
+| `ONLINE_MODE` | `true` — только лицензия; `false` — пускает пиратские клиенты (T-Launcher) |
+| `ENABLE_WHITELIST`, `WHITELIST`, `OPS` | whitelist и операторы, см. «Whitelist» |
+| `RCON_PASSWORD` | для консоли и бэкапов, наружу порт не открыт |
+| `LINK_DOMAIN`, `DOWNLOAD_PASSWORD`, `SERVER_ADDRESS` | сайт сервера, см. «Сайт» |
+| `BACKUP_INTERVAL`, `PRUNE_BACKUPS_DAYS` | частота и срок хранения бэкапов |
 
-## 4. Повседневное управление
+## Управление
 
 ```bash
-docker compose ps                          # статус контейнеров
-docker compose logs -f mc                  # логи сервера
-docker compose restart mc                  # перезапуск
-docker compose down                        # остановка (данные в ./data сохраняются)
-bash scripts/console.sh                    # интерактивная консоль сервера (RCON)
-bash scripts/console.sh op ИмяИгрока       # одна команда без интерактива
-bash scripts/backup-now.sh                 # ручной бэкап прямо сейчас
+docker compose ps                       # статус
+docker compose logs -f mc               # логи
+docker compose restart mc               # перезапуск
+docker compose down                     # остановка (data/ сохраняется)
+bash scripts/console.sh                 # интерактивная консоль (RCON)
+bash scripts/console.sh op Nick         # одна команда
+bash scripts/backup-now.sh              # бэкап прямо сейчас
 ```
 
-Контейнеры подняты с `restart: unless-stopped` — после перезагрузки VPS сервер
-поднимется автоматически вместе с Docker (`systemctl enable docker` уже сделан
-скриптом установки).
+Контейнеры с `restart: unless-stopped` поднимаются сами после перезагрузки VPS.
 
-## 4.1 Whitelist в offline-режиме (ONLINE_MODE=false)
+## Whitelist
 
-Если сервер запущен без проверки лицензии Mojang (`ONLINE_MODE=false`, пиратские
-клиенты), **нельзя** задавать `WHITELIST`/`OPS` через `.env` — переменные окружения
-резолвят UUID по лицензионному аккаунту (Mojang/PlayerDB API), а офлайн-сервер
-считает UUID игрока локально по нику (`OfflinePlayer:<ник>`). Эти UUID не совпадают,
-и сервер отклоняет подключение с `You are not white-listed on this server!`,
-даже если ник присутствует в списке.
+**`ONLINE_MODE=true`**: достаточно `.env` — `ENABLE_WHITELIST=true`, `WHITELIST=Nick1,Nick2`,
+`OPS=Nick1`, затем `docker compose up -d`.
 
-Правильный порядок для offline-режима:
-
-1. В `.env`: `ENABLE_WHITELIST=true`, а `WHITELIST=` и `OPS=` оставить пустыми.
-2. Перезапустить: `docker compose up -d`.
-3. Добавить игроков командами прямо в консоли сервера (там UUID считается верно):
-
-   ```bash
-   bash scripts/console.sh
-   whitelist add Nulls
-   op Nulls
-   ```
-
-   Эти команды создают/обновляют `data/whitelist.json` и `data/ops.json` с правильными
-   offline-UUID и сохраняются между перезапусками — повторять их при каждом старте не нужно.
-
-> Если такой сложности хочется избежать — используйте `ONLINE_MODE=true` (значение
-> по умолчанию в `.env.example`), тогда `WHITELIST=`/`OPS=` из `.env` работают как есть,
-> но подключаться смогут только владельцы лицензионных аккаунтов Minecraft.
-
-## 5. Моды
-
-Кладите `.jar`-файлы модов (и их зависимости — например, библиотечные моды вроде
-Architectury API, если конкретный мод их требует) прямо в папку **`mods/`** в корне
-репозитория, рядом с `docker-compose.yml`:
-
-```
-minecraft-server/
-└── mods/
-    ├── jei-1.21.1-....jar
-    └── ...
-```
-
-Эта папка смонтирована в контейнер как `/mods:ro`, и при **каждом старте** контейнера
-itzg-образ копирует всё из `/mods` в `/data/mods`. Чтобы применить изменения после
-добавления/удаления модов, достаточно перезапустить контейнер (полная пересборка не
-нужна, `docker compose down`/`up -d` тоже не нужен):
+**`ONLINE_MODE=false`**: `WHITELIST`/`OPS` в `.env` оставить пустыми — образ получает
+по ним лицензионные UUID, а офлайн-сервер считает UUID по нику, и игрок получит
+`You are not white-listed on this server!`. Вместо этого `ENABLE_WHITELIST=true` и
+добавлять игроков через консоль:
 
 ```bash
-docker compose restart mc
+bash scripts/console.sh
+whitelist add Nick
+op Nick
 ```
 
-Клиенты должны использовать те же версии модов (и тот же Forge `52.1.16`), что и сервер.
+Список хранится в `data/whitelist.json` и `data/ops.json` между перезапусками.
 
-### Контент-моды (подземелья/декор/QoL)
+> ⚠️ Если ник совпадает с чьим-то лицензионным аккаунтом, `whitelist add` запишет
+> лицензионный UUID, и игрок не зайдёт. Тогда: `whitelist off` → игрок заходит один раз →
+> `whitelist add Nick` → `whitelist on`.
+>
+> Без мода авторизации whitelist в офлайн-режиме проверяет только ник: любой, кто знает
+> ник из списка, может зайти под ним.
 
-В `mods/` уже лежат (все проверены на Forge 1.21.1, скачаны с Modrinth с проверкой SHA1):
+## Моды
+
+Все `.jar` из `mods/` при каждом старте копируются в `data/mods`, а также попадают в
+клиент-пак и в список на сайте. Моды должны быть **под Forge 1.21.1** (Fabric/NeoForge
+jar не загрузятся).
 
 | Мод | Зачем |
 |---|---|
-| [Structory](https://modrinth.com/mod/structory) + [Structory: Towers](https://modrinth.com/mod/structory-towers) | Новые небольшие структуры (руины, башни) в ванильном стиле, свой лут не добавляют |
-| [Dungeons and Taverns](https://modrinth.com/mod/dungeons-and-taverns) | Таверны, аванпосты, новые деревенские постройки |
-| [Macaw's Furniture](https://modrinth.com/mod/macaws-furniture), [Macaw's Bridges](https://modrinth.com/mod/macaws-bridges) | Декоративные блоки: мебель, мосты, заборы — чистая косметика |
-| [Waystones](https://modrinth.com/mod/waystones) | Телепорт между поставленными камнями (удобство, не боевая сила). Требует **Balm** |
-| [Balm](https://modrinth.com/mod/balm) | Библиотека, обязательна для Waystones |
-| [Xaero's Minimap](https://modrinth.com/mod/xaeros-minimap), [Xaero's World Map](https://modrinth.com/mod/xaeros-world-map) | Миникарта и общая карта, видно друг друга |
+| [Structory](https://modrinth.com/mod/structory) + [Towers](https://modrinth.com/mod/structory-towers) | Небольшие структуры в ванильном стиле |
+| [Dungeons and Taverns](https://modrinth.com/mod/dungeons-and-taverns) | Таверны, аванпосты, постройки в деревнях |
+| [Macaw's Furniture](https://modrinth.com/mod/macaws-furniture), [Bridges](https://modrinth.com/mod/macaws-bridges) | Декоративные блоки |
+| [Waystones](https://modrinth.com/mod/waystones) + [Balm](https://modrinth.com/mod/balm) | Телепорт между камнями (Balm — зависимость) |
+| [Xaero's Minimap](https://modrinth.com/mod/xaeros-minimap), [World Map](https://modrinth.com/mod/xaeros-world-map) | Миникарта и карта мира |
 
-Ни один не даёт игрокам боевого/экономического преимущества — только контент и удобство.
-После добавления/замены модов не забудьте пересобрать клиент-пак (раздел 5.1)
-и синхронизировать `mods/` с VPS.
-
-### Мод авторизации: LoginSystem
-
-В `mods/` лежит [LoginSystem](https://modrinth.com/mod/loginmod) `2.0` — защита от
-подмены ника при `ONLINE_MODE=false`. Обычные текстовые команды (не числовой PIN,
-как было у промежуточного варианта через datapack), пароли хешируются bcrypt
-(`org.mindrot.jbcrypt`, зашит в jar), блокирует остальные команды до входа.
-
-```
-/register <пароль> <пароль ещё раз>   - регистрация при первом входе (один раз навсегда)
-/login <пароль>                        - вход при каждом следующем подключении
-```
-
-История замен, если интересно почему не предыдущие варианты:
-> ⚠️ Сначала стоял [EasyLogin](https://modrinth.com/mod/easylogin) `1.0.2` — **крашит
-> сервер** при `/register` (не зашивает свою bcrypt-библиотеку в jar, баг подтверждён
-> во всех версиях 1.0.0-1.0.2). Потом — datapack [Auth](https://modrinth.com/datapack/auth)
-> (работал, но пароль там только число через `/trigger`, неудобно).
-
-**Важно:** у мода есть встроенная веб-панель администратора (порт `8080` внутри
-контейнера, наружу не публикуется) с дефолтным паролем `admin123` и отображением
-части паролей игроков в открытом виде — она **намеренно выключена**
-(`config/loginsystem.properties`, `enableWebPanel=false`). Управление игроками — через
-RCON (`scripts/console.sh`) или команды `/register`/`/login` самих игроков.
-`config/` монтируется в контейнер и копируется при каждом старте, так что настройка
-не потеряется и не разъедется с репозиторием.
-
-> ⚠️ После **любой** правки файлов внутри `config/` (или `mods/`) одного `docker compose
-> up -d mc` недостаточно, если сам `docker-compose.yml` не менялся — Compose не отслеживает
-> изменение содержимого файлов под bind mount, увидит контейнер уже запущенным и ничего
-> не сделает. Нужно явно: `docker compose up -d --force-recreate mc` (или `restart mc`).
-
-Применить на VPS:
+После изменения `mods/`:
 
 ```bash
-scp minecraft-server/mods/loginsystem-2.0.jar user@your-vps-ip:~/minecraft-server/mods/
-scp minecraft-server/config/loginsystem.properties user@your-vps-ip:~/minecraft-server/config/
-ssh user@your-vps-ip
-cd minecraft-server
-rm -f mods/auth-v1.5.1.jar mods/EasyLogin-forge-1.21.1-1.0.2.jar   # старые варианты - удалить
-docker compose up -d   # up, не restart - подхватить новый volume ./config
-docker compose logs -f mc   # проверить, что мод загрузился без ошибок
+docker compose restart mc link-server   # сервер + пересборка клиент-пака
 ```
 
-Клиент-пак (см. раздел 5.1) пересоберётся сам при следующем старте `link-server`.
+При удалении мода удалите его и из `data/mods/` — образ копирует новые файлы, но
+старые может не убирать.
 
-## 6. Бэкапы
+## Сайт, бэкап и клиент-пак
 
-Сервис `backup` каждые `BACKUP_INTERVAL` (по умолчанию 24h) делает `save-off` /
-`save-all` / архивацию мира через RCON и кладёт `tar.gz` в `./backups`, храня
-их `PRUNE_BACKUPS_DAYS` дней (по умолчанию 7). Рекомендуется дополнительно
-копировать `./backups` за пределы VPS (например, через `rsync`/`rclone` в облако) —
-локальные бэкапы не спасут при потере самого сервера.
+`caddy` получает HTTPS-сертификат для `LINK_DOMAIN` (A-запись → IP VPS) и проксирует на
+`link-server`:
 
-Восстановление: остановите сервер (`docker compose down`), замените содержимое
-`./data` на данные из нужного архива бэкапа, снова `docker compose up -d`.
+- `/` — MOTD, версия, адрес, список модов;
+- `/backup` — скачивание самого свежего архива из `backups/`;
+- `/client` — скачивание `client-pack.zip` (Forge-инсталлятор + моды + инструкция).
 
-## 6.1 Сайт сервера, бэкап и клиент-пак (link-server + caddy)
+Страницы открыты, скачивание файла просит `DOWNLOAD_PASSWORD` (простой, его печатает
+Discord-бот). `client-pack.zip` собирается автоматически при старте `link-server`.
 
-`link-server` отдаёт HTML-страницы и файлы, вся логика (включая проверку пароля) — в
-нём (`link-server/server.js`), простой Node-скрипт без зависимостей. `caddy` перед ним
-только терминирует HTTPS (домен) и проксирует всё как есть.
+> ⚠️ После правки переменных `link-server` в `.env` нужен `docker compose up -d link-server`,
+> а не `restart` — `restart` не перечитывает окружение.
 
-- `https://<LINK_DOMAIN>/` — главная страница: MOTD, версия Minecraft/Forge, адрес
-  сервера, список установленных модов (берётся из `mods/` автоматически) и кнопки.
-- `https://<LINK_DOMAIN>/backup` — страница в стиле Minecraft (на кириллице), которая
-  сама начинает скачивание самого нового файла из `./backups`.
-- `https://<LINK_DOMAIN>/client` — то же самое для `client-pack.zip` (см. раздел 5.1).
+## Бэкапы
 
-Сами страницы открыты всем. При переходе на файл (`.../backup/file` или `.../client/file`)
-показывается **своя форма пароля в стиле сайта** (не нативное окно браузера — его нельзя
-стилизовать) — значение `DOWNLOAD_PASSWORD` из `.env`. Пароль простой и не секретный:
-Discord-бот печатает его прямо в ответе на `/minecraft backup`/`/minecraft client` и сам
-подставляет его заголовком при скачивании (без формы, минуя её).
+`backup` раз в `BACKUP_INTERVAL` (по умолчанию 24h) делает `tar.gz` мира в `backups/`,
+хранит `PRUNE_BACKUPS_DAYS` дней. Копируйте `backups/` и за пределы VPS.
 
-> ⚠️ После правки в `.env` любой переменной, которую читает `link-server`
-> (`SERVER_ADDRESS`, `MOTD`, `DOWNLOAD_PASSWORD`, `FORGE_INSTALLER_FILE`) —
-> **`docker compose restart link-server` не подхватит новое значение**: restart
-> просто перезапускает процесс в уже созданном контейнере, окружение у него
-> остаётся от прошлого `up`. Нужно пересоздать контейнер:
->
-> ```bash
-> docker compose up -d link-server
-> ```
->
-> Обычно этого достаточно — Compose сам видит, что переменные окружения
-> изменились, и пересоздаёт контейнер. Если не уверены (или не помогло) —
-> форсируйте явно:
->
-> ```bash
-> docker compose up -d --force-recreate link-server
-> docker exec mc-link-server printenv SERVER_ADDRESS   # проверить, что применилось
-> ```
+Восстановление: `docker compose down` → заменить `data/` содержимым архива →
+`docker compose up -d`.
 
-### Разовая настройка домена
+## Обновление Forge
 
-1. Домен уже должен указывать A-записью на IP этого VPS (сделано).
-2. В `.env`: `LINK_DOMAIN=<ваш домен>`, `DOWNLOAD_PASSWORD=<простой пароль>`
-   (сгенерировать: `openssl rand -hex 5`), при желании `SERVER_ADDRESS`/`MOTD`.
-3. `ufw` уже открывает `80/tcp` и `443/tcp` (скрипт `install-docker-ubuntu.sh`).
-4. Запустить/перезапустить: `docker compose up -d`. Caddy сам получит сертификат
-   Let's Encrypt при первом запросе к домену (нужно 1-2 минуты и доступный порт 80).
-   Проверить: `docker compose logs -f caddy`.
-
-Смена пароля: поменяйте `DOWNLOAD_PASSWORD` в `.env` → `docker compose up -d link-server`
-→ не забудьте обновить `MINECRAFT_DOWNLOAD_PASSWORD` в `.env` бота и передеплоить его.
-
-## 5.1 Клиент-пак для игроков
-
-`client-pack.zip` (Forge-инсталлятор + все `.jar` из `mods/` + `README.txt` с инструкцией
-по установке) собирается **автоматически** сервисом `link-server` при каждом его старте
-(`link-server/build-client-pack.js`) — вручную ничего запускать не нужно. Чтобы пересобрать
-после изменения модов или обновления Forge, просто перезапустите этот сервис:
-
-```bash
-docker compose restart link-server
-docker compose logs link-server   # в логе будет "[client-pack] Собран ... (N модов, Forge ...)"
-```
-
-Результат сразу становится доступен по бессрочной ссылке `/client` (раздел 6.1).
-
-## 7. Обновление версии Forge / модов
-
-1. Положите новый `forge-*-installer.jar` в корень репозитория, обновите
-   `FORGE_INSTALLER_FILE` в `.env`.
-2. Обновите содержимое `mods/`, если нужно.
-3. Выполните `bash scripts/update.sh` — подтянет свежие образы и пересоздаст контейнер `mc`.
-4. `docker compose restart link-server` — пересоберёт клиент-пак с новыми модами/Forge.
+1. Положить новый `forge-*-installer.jar` в корень, обновить `FORGE_INSTALLER_FILE` в `.env`.
+2. Обновить `mods/` под новую версию.
+3. `bash scripts/update.sh`, затем `docker compose up -d link-server`.
 
 ## Безопасность
 
-- RCON-порт не публикуется наружу (доступен только внутри Docker-сети / через `docker compose exec`).
-- `.env` содержит секреты (`RCON_PASSWORD`, `BACKUP_LINK_TOKEN`, `DOWNLOAD_PASSWORD`) —
-  не коммитьте его в публичный репозиторий (уже добавлен в `.gitignore`).
-- `link-server` наружу вообще не публикуется — единственная внешняя точка входа это `caddy`
-  (HTTPS + Basic Auth только на скачивание файлов, см. раздел 6.1). Пароль намеренно
-  простой (его печатает бот) — это не защита от целенаправленной атаки, а барьер от
-  случайного/массового скачивания мира кем попало.
-- `ONLINE_MODE=true` по умолчанию — проверка лицензии Mojang, не отключайте на публичном сервере
-  без необходимости (см. раздел 4.1).
+- Наружу открыты только `25565` (игра) и `80/443` (caddy). RCON и `link-server` — только внутри Docker-сети.
+- `.env` содержит секреты и в `.gitignore`.
