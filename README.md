@@ -112,12 +112,17 @@ RCON наружу по-прежнему не открыт. Подавший с �
 | Мод | Версия | Зачем |
 |---|---|---|
 | [Fabric API](https://modrinth.com/mod/fabric-api) | 0.155.3+26.1.2 | Библиотека, нужна почти всем Fabric-модам |
-| [Structory](https://modrinth.com/mod/structory) + [Towers](https://modrinth.com/mod/structory-towers) | 1.3.17 / 1.0.17 | Небольшие структуры в ванильном стиле |
+| [Structory](https://modrinth.com/mod/structory) | 1.3.17 | Небольшие структуры в ванильном стиле |
 | [Dungeons and Taverns](https://modrinth.com/mod/dungeons-and-taverns) | 5.2.0 | Таверны, аванпосты, постройки в деревнях |
 | [Macaw's Furniture](https://modrinth.com/mod/macaws-furniture), [Bridges](https://modrinth.com/mod/macaws-bridges) | 3.4.2 / 3.1.2 | Декоративные блоки |
-| [Waystones](https://modrinth.com/mod/waystones) + [Balm](https://modrinth.com/mod/balm) + [Shogi](https://modrinth.com/mod/shogi) | 26.1.2.16 / 26.1.2.14 / 26.1.2.8 | Телепорт между камнями (Balm и Shogi — зависимости) |
+| [Waystones](https://modrinth.com/mod/waystones) + [Balm](https://modrinth.com/mod/balm) + [Shogi](https://modrinth.com/mod/shogi) | 26.1.2.13 / 26.1.2.10 / 26.1.2.8 | Телепорт между камнями (Balm и Shogi — зависимости) |
 | [Xaero's Minimap](https://modrinth.com/mod/xaeros-minimap), [World Map](https://modrinth.com/mod/xaeros-world-map) | 26.5.0 / 1.46.0 | Миникарта и карта мира (XaeroLib встроен в jar) |
 | [EasyWhitelist](https://modrinth.com/mod/easywhitelist) | 1.1.4 | Только сервер: whitelist по нику для офлайн-режима |
+
+> Все моды должны работать на Fabric Loader **0.19.2** — такой стоит во встроенной версии
+> «Fabric 26.1.2» в T-Launcher. Поэтому Waystones/Balm не самые свежие: начиная с
+> Waystones 26.1.2.14 и Balm 26.1.2.11 они требуют loader 0.19.3+. При обновлении модов
+> проверяйте `depends.fabricloader` в `fabric.mod.json` jar-файла.
 
 После изменения `mods/`:
 

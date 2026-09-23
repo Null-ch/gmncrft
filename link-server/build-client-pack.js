@@ -35,6 +35,8 @@ function fabricApiVersion(modJars) {
  */
 function clientGuide({ mcVersion, loaderVersion, serverAddress, modsDir }) {
   const loaderLabel = loaderVersion || 'последняя стабильная';
+  // Так называется версия, которую создаёт Fabric Installer - её и надо выбирать в лаунчере.
+  const fabricVersionName = `fabric-loader-${loaderVersion || '<версия>'}-${mcVersion}`;
   const mods = modsDir ? listModJars(modsDir) : [];
   const apiVersion = fabricApiVersion(mods);
   return {
@@ -55,10 +57,10 @@ function clientGuide({ mcVersion, loaderVersion, serverAddress, modsDir }) {
         steps: [
           'Скачай и установи T-Launcher с официального сайта: https://tlauncher.org',
           'Введи никнейм и нажми «Войти». Ник выбери сразу постоянный: доступ на сервер выдаётся именно на него (whitelist).',
-          `В списке версий внизу окна выбери «Fabric ${mcVersion}» — T-Launcher сам поставит Fabric и нужную Java.`,
+          `В списке версий внизу окна выбери «Fabric ${mcVersion}» — T-Launcher сам поставит Fabric и нужную Java. Именно Fabric: с «Forge ${mcVersion}» сервер не пустит («requires Fabric Loader and Fabric API»).`,
           'Нажми «Играть» один раз и дождись главного меню — так создастся папка mods. Закрой игру.',
           'Открой папку игры (значок папки рядом с кнопкой «Играть» → «Открыть папку игры»), зайди в mods и скопируй туда все .jar из папки mods архива.',
-          `Запусти игру через профиль Fabric ${mcVersion} → «Сетевая игра» → «Добавить сервер» → адрес ${serverAddress}.`,
+          `Запусти игру через «Fabric ${mcVersion}» → «Сетевая игра» → «Добавить сервер» → адрес ${serverAddress}.`,
         ],
       },
       {
@@ -67,7 +69,7 @@ function clientGuide({ mcVersion, loaderVersion, serverAddress, modsDir }) {
           'Установи официальный лаунчер: https://www.minecraft.net/ru-ru/download',
           `Скачай Fabric Installer: ${FABRIC_INSTALLER_URL} (для .jar-версии нужна Java 25+, например https://adoptium.net).`,
           `В инсталляторе вкладка «Client»: Minecraft Version ${mcVersion}, Loader Version ${loaderLabel}, стандартная папка .minecraft → «Install».`,
-          `В лаунчере выбери профиль «fabric-loader-${mcVersion}», запусти игру один раз и закрой.`,
+          `В лаунчере выбери профиль «fabric-loader-${mcVersion}» (версия ${fabricVersionName}), запусти игру один раз и закрой.`,
           'Скопируй все .jar из папки mods архива в папку mods игры: Windows — %appdata%\\.minecraft\\mods, Linux/macOS — ~/.minecraft/mods.',
           `Запусти профиль Fabric → «Сетевая игра» → «Добавить сервер» → адрес ${serverAddress}.`,
         ],
@@ -79,6 +81,7 @@ function clientGuide({ mcVersion, loaderVersion, serverAddress, modsDir }) {
           'Без этого при подключении будет ошибка «You are not white-listed on this server!».',
           `Моды нужны именно из архива сервера: Forge-моды и моды под другую версию Minecraft с Fabric ${mcVersion} не загрузятся.`,
           'Старые моды (например, от прошлой версии сервера) из папки mods игры удали — с ними игра не запустится.',
+          `Ошибка «Replace mod 'Fabric Loader' … with version … or later» значит, что Fabric Loader в лаунчере слишком старый: поставь новее через Fabric Installer (${FABRIC_INSTALLER_URL}) и выбери версию «${fabricVersionName}».`,
         ],
       },
     ],
