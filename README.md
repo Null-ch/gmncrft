@@ -109,20 +109,26 @@ RCON наружу по-прежнему не открыт. Подавший с �
 список на сайте. Моды должны быть **под Fabric и Minecraft 26.1.x** (Forge/NeoForge jar не
 загрузятся). Искать версии удобно на [Modrinth](https://modrinth.com/mods?g=categories:fabric&v=26.1.2).
 
-| Мод | Версия | Зачем |
-|---|---|---|
-| [Fabric API](https://modrinth.com/mod/fabric-api) | 0.155.3+26.1.2 | Библиотека, нужна почти всем Fabric-модам |
-| [Structory](https://modrinth.com/mod/structory) | 1.3.17 | Небольшие структуры в ванильном стиле |
-| [Dungeons and Taverns](https://modrinth.com/mod/dungeons-and-taverns) | 5.2.0 | Таверны, аванпосты, постройки в деревнях |
-| [Macaw's Furniture](https://modrinth.com/mod/macaws-furniture), [Bridges](https://modrinth.com/mod/macaws-bridges) | 3.4.2 / 3.1.2 | Декоративные блоки |
-| [Waystones](https://modrinth.com/mod/waystones) + [Balm](https://modrinth.com/mod/balm) + [Shogi](https://modrinth.com/mod/shogi) | 26.1.2.13 / 26.1.2.10 / 26.1.2.8 | Телепорт между камнями (Balm и Shogi — зависимости) |
-| [Xaero's Minimap](https://modrinth.com/mod/xaeros-minimap), [World Map](https://modrinth.com/mod/xaeros-world-map) | 26.5.0 / 1.46.0 | Миникарта и карта мира (XaeroLib встроен в jar) |
-| [EasyWhitelist](https://modrinth.com/mod/easywhitelist) | 1.1.4 | Только сервер: whitelist по нику для офлайн-режима |
+Полный список jar — в `mods/` и на сайте. По группам:
+
+| Группа | Моды |
+|---|---|
+| Библиотеки | Fabric API 0.155.3, Balm, Shogi, Cloth Config, Fabric Language Kotlin, Cardinal Components API, GeckoLib, Moonlight Lib, Cristel Lib, Anvian's Lib, Moog's Structure Lib, PrickleMC, MezzConfig |
+| Структуры и мир | Structory, Dungeons and Taverns, Towns and Towers 1.13.11, Explorations, Explorify, Moog's Voyager/End Structures, Infinity Cave, Starry Skies, StreamsReflowing |
+| Деревни и мобы | Minecraft Comes Alive, Millager, Civillis, Cube Animals, UntitledDuck, Wolf Saddle-Bag, Gamingbarn's Morphs |
+| Предметы и геймплей | Waystones 26.1.2.13, Artifacts, Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee |
+| Декор | Macaw's Furniture/Bridges, Farmhouse Decorations, Carved Wood, Simply Cozy, Heraldics, Woven In Time, Assorted Discoveries 3.1.1, Slabbed |
+| Клиентские (на сервере пропускаются) | Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY + Interactive Foliage, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames |
+| Только сервер | EasyWhitelist 1.1.4 — whitelist по нику для офлайн-режима |
 
 > Все моды должны работать на Fabric Loader **0.19.2** — такой стоит во встроенной версии
-> «Fabric 26.1.2» в T-Launcher. Поэтому Waystones/Balm не самые свежие: начиная с
-> Waystones 26.1.2.14 и Balm 26.1.2.11 они требуют loader 0.19.3+. При обновлении модов
-> проверяйте `depends.fabricloader` в `fabric.mod.json` jar-файла.
+> «Fabric 26.1.2» в T-Launcher. Поэтому часть модов не самые свежие: Waystones 26.1.2.14+,
+> Balm 26.1.2.11+, Dreambound 1.2.0, Assorted Discoveries 3.3.0 требуют loader 0.19.3+.
+> Под 0.19.2 нет ни одной версии у Belt Slot, Echo Pickaxe, Fetzi's Asian Deco, Heirlooms,
+> Magic Vibe Decorations, Naraka, Sulfur, Voxelized Furniture, Signpost, Level10
+> Enchantments — их на сервере нет. При обновлении модов проверяйте
+> `depends.fabricloader` в `fabric.mod.json` jar-файла, а также что jar под Fabric (не
+> `-neoforge`/`-forge`) и под 26.1.2 (Towns and Towers 1.13.12 уже только для 26.3).
 
 После изменения `mods/`:
 
