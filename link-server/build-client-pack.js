@@ -5,9 +5,8 @@
 // Та же инструкция показывается на сайте (/client и /client/readme.txt): её текст
 // собирается здесь - clientGuide() - чтобы сайт и README в архиве не расходились.
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { readZipEntry, writeZip } = require('./zip');
 
 const FABRIC_INSTALLER_URL = 'https://fabricmc.net/use/installer/';
 
@@ -42,7 +41,7 @@ const compareVersions = (a, b) => {
 // Минимальный Fabric Loader для клиента = максимум из ">=X" в depends.fabricloader модов.
 // Версия loader'а на сервере (из имени launcher-jar) игроку не важна: T-Launcher ставит
 // свой loader, и подходит любой не ниже этого минимума. Кэш по списку jar - на главной
-// и /client это считается на каждый запрос, а unzip 10+ файлов не бесплатный.
+// и /client это считается на каждый запрос, а чтение 10+ jar не бесплатное.
 let loaderCache = { key: null, value: null };
 function minLoaderVersion(modsDir, modJars) {
   const key = modJars.join('\n');
@@ -50,11 +49,14 @@ function minLoaderVersion(modsDir, modJars) {
   let min = null;
   for (const jar of modJars) {
     try {
-      const meta = JSON.parse(execFileSync('unzip', ['-p', path.join(modsDir, jar), 'fabric.mod.json']).toString());
+      const raw = readZipEntry(path.join(modsDir, jar), 'fabric.mod.json');
+      if (!raw) continue; // не Fabric-мод
+      // В fabric.mod.json бывают сырые переводы строк внутри строк - JSON.parse на них падает.
+      const meta = JSON.parse(raw.toString('utf8').replace(/[\u0000-\u001f]+/g, ' '));
       const m = /(?:>=|\^|~)?\s*(\d+\.\d+\.\d+)/.exec(String(meta.depends?.fabricloader || ''));
       if (m && (!min || compareVersions(m[1], min) > 0)) min = m[1];
-    } catch {
-      // не Fabric-мод или нет unzip - пропускаем
+    } catch (err) {
+      console.warn(`[client-pack] Не удалось прочитать fabric.mod.json из ${jar}: ${err.message}`);
     }
   }
   loaderCache = { key, value: min };
@@ -137,26 +139,21 @@ function buildClientPack({ modsDir, outPath, ...guideOptions }) {
     return false;
   }
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'client-pack-'));
-  try {
-    const modsOut = path.join(tmpDir, 'mods');
-    fs.mkdirSync(modsOut);
-    for (const jar of modJars) {
-      fs.copyFileSync(path.join(modsDir, jar), path.join(modsOut, jar));
-    }
-    // CRLF - чтобы README нормально открывался и в Блокноте на старых Windows.
-    const readme = guideToText(clientGuide({ ...guideOptions, modsDir })).replace(/\n/g, '\r\n');
-    fs.writeFileSync(path.join(tmpDir, 'README.txt'), readme, 'utf8');
+  // CRLF - чтобы README нормально открывался и в Блокноте на старых Windows.
+  const readme = guideToText(clientGuide({ ...guideOptions, modsDir })).replace(/\n/g, '\r\n');
+  const entries = [
+    { name: 'README.txt', data: Buffer.from(readme, 'utf8') },
+    ...modJars.map((jar) => ({ name: `mods/${jar}`, data: fs.readFileSync(path.join(modsDir, jar)) })),
+  ];
 
-    fs.rmSync(outPath, { force: true });
-    execFileSync('zip', ['-r', '-q', outPath, '.'], { cwd: tmpDir });
+  // Пишем во временный файл и переименовываем: /client/file не отдаст недописанный архив.
+  const tmpPath = `${outPath}.tmp`;
+  writeZip(tmpPath, entries);
+  fs.renameSync(tmpPath, outPath);
 
-    const { size } = fs.statSync(outPath);
-    console.log(`[client-pack] Собран ${outPath} (${modJars.length} модов + README.txt, ${(size / 1024 / 1024).toFixed(1)} МБ)`);
-    return true;
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+  const { size } = fs.statSync(outPath);
+  console.log(`[client-pack] Собран ${outPath} (${modJars.length} модов + README.txt, ${(size / 1024 / 1024).toFixed(1)} МБ)`);
+  return true;
 }
 
 module.exports = { buildClientPack, clientGuide, guideToText, minLoaderVersion, listModJars };

@@ -1,11 +1,9 @@
 FROM node:22-bookworm-slim
 
-# zip - автосборка client-pack.zip при старте, unzip - чтение fabric.mod.json модов
-# (минимальная версия Fabric Loader для клиента), см. build-client-pack.js.
-RUN apt-get update && apt-get install -y --no-install-recommends zip unzip \
-    && rm -rf /var/lib/apt/lists/*
+# Без apt-get: на VPS нет доступа к deb.debian.org. zip/unzip заменены на link-server/zip.js
+# (встроенный zlib), так что образ собирается только из уже скачанного node-образа.
 
 WORKDIR /app
-COPY server.js build-client-pack.js rcon.js applications.js ./
+COPY server.js build-client-pack.js zip.js rcon.js applications.js ./
 
 CMD ["node", "server.js"]
