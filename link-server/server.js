@@ -446,7 +446,7 @@ function renderClientPage() {
     <p class="subtitle">${esc(guide.intro)}</p>
     ${facts}
     <a class="btn" href="/client/file">Скачать архив (моды + README)</a>
-    <a class="btn secondary" href="/client/readme.txt">Только README.txt</a>
+    <a class="btn" href="/client/readme.txt">Только README.txt</a>
     <div class="lock">🔒 Для скачивания архива нужен пароль — спроси у администратора сервера.</div>
     ${sections}
     ${modsList}
