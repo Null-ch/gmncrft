@@ -725,13 +725,13 @@ function renderClientPage() {
     .join('');
   const modsList = modsDetails('В архиве: моды', guide.mods) +
     modsDetails('В архиве: шейдеры', guide.shaders) +
-    modsDetails('В архиве: текстур-паки', guide.resourcePacks);
+    modsDetails('В архиве: пакеты ресурсов', guide.resourcePacks);
   return page(
     'Установка клиента',
     `    <h1>Установка клиента</h1>
     <p class="subtitle">${esc(guide.intro)}</p>
     ${facts}
-    <a class="btn" href="/client/file">Скачать архив (моды${guide.shaders.length ? ' + шейдеры' : ''}${guide.resourcePacks.length ? ' + текстуры' : ''} + README)</a>
+    <a class="btn" href="/client/file">Скачать архив (моды${guide.shaders.length ? ' + шейдеры' : ''}${guide.resourcePacks.length ? ' + пакеты ресурсов' : ''} + README)</a>
     <a class="btn" href="/client/readme.txt">Только README.txt</a>
     <div class="lock">🔒 Для скачивания архива нужен пароль — спроси у администратора сервера.</div>
     ${sections}

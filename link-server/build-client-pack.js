@@ -39,6 +39,10 @@ function listPackZips(dir) {
 const gameFolderHint = (folder) =>
   `AppData\\Roaming\\.minecraft\\${folder} (полный путь: C:\\Users\\<имя пользователя>\\AppData\\Roaming\\.minecraft\\${folder}, быстро открыть — Win+R → %APPDATA%\\.minecraft\\${folder}). Если папки ${folder} нет — один раз запусти игру с модами или создай её сам.`;
 
+// Русификатор модов в resourcepacks/ (Russian_Mods_Translation.zip): для него в инструкции
+// отдельный шаг в инструкции - что это и что нужен русский язык игры.
+const TRANSLATION_PACK = /russian|translation|русиф/i;
+
 // "fabric-api-0.155.3+26.1.2.jar" -> "0.155.3+26.1.2": версию Fabric API полезно знать
 // игроку, который ставит моды не из архива.
 function fabricApiVersion(modJars) {
@@ -89,9 +93,10 @@ function clientGuide({ mcVersion, serverAddress, modsDir, shadersDir, resourcePa
   const mods = modsDir ? listModJars(modsDir) : [];
   const shaders = listPackZips(shadersDir);
   const resourcePacks = listPackZips(resourcePacksDir);
+  const translationPack = resourcePacks.find((pack) => TRANSLATION_PACK.test(pack));
   const extras = [
     ...(shaders.length ? ['папка shaderpacks с шейдерами (.zip)'] : []),
-    ...(resourcePacks.length ? ['папка resourcepacks с текстур-паками (.zip)'] : []),
+    ...(resourcePacks.length ? ['папка resourcepacks с пакетами ресурсов (.zip)'] : []),
   ];
   const apiVersion = fabricApiVersion(mods);
   const minLoader = modsDir ? minLoaderVersion(modsDir, mods) : null;
@@ -147,12 +152,17 @@ function clientGuide({ mcVersion, serverAddress, modsDir, shadersDir, resourcePa
       ...(resourcePacks.length
         ? [
             {
-              title: 'Текстур-пак (по желанию)',
+              title: translationPack ? 'Русификатор модов и текстуры' : 'Текстур-пак (по желанию)',
               steps: [
-                'Возьми текстур-пак из папки resourcepacks архива (.zip) и НЕ распаковывай его.',
-                `Положи этот .zip как есть в папку ${gameFolderHint('resourcepacks')}`,
+                'Возьми все .zip из папки resourcepacks архива и НЕ распаковывай их.',
+                `Положи эти .zip как есть в папку ${gameFolderHint('resourcepacks')}`,
                 'Запусти игру и открой «Настройки» → «Пакеты ресурсов».',
-                'В левом списке («Доступные») наведи на текстур-пак и нажми стрелку — он переместится в правый список («Выбранные»). Нажми «Готово».',
+                'В левом списке («Доступные») наведи на пакет и нажми стрелку — он переместится в правый список («Выбранные»). Так же перенеси остальные и нажми «Готово».',
+                ...(translationPack
+                  ? [
+                      `${translationPack} — русский перевод модов (квесты, реплики жителей, предметы, настройки); без него часть текста будет на английском. В игре должен быть выбран язык «Русский» («Настройки» → «Язык»).`,
+                    ]
+                  : []),
               ],
             },
           ]
@@ -182,7 +192,7 @@ function guideToText(guide) {
     for (const pack of guide.shaders) out.push(`- ${pack}`);
   }
   if (guide.resourcePacks.length) {
-    out.push('', '', `Текстур-паки (${guide.resourcePacks.length})`, '-'.repeat(60));
+    out.push('', '', `Пакеты ресурсов (${guide.resourcePacks.length})`, '-'.repeat(60));
     for (const pack of guide.resourcePacks) out.push(`- ${pack}`);
   }
   out.push('', 'Приятной игры!', '');
