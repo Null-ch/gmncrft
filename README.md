@@ -116,9 +116,9 @@ RCON наружу по-прежнему не открыт. Подавший с �
 | Библиотеки | Fabric API 0.155.3, Balm, Shogi, Cloth Config, Fabric Language Kotlin, Cardinal Components API, GeckoLib, Moonlight Lib, Cristel Lib, Anvian's Lib, Moog's Structure Lib, PrickleMC, MezzConfig, CodxLib, OELib, Mint Lib, Player Animation Library |
 | Структуры и мир | Structory, Dungeons and Taverns, Towns and Towers 1.13.11, Explorations, Explorify, Moog's Voyager/End Structures, Infinity Cave, Starry Skies, StreamsReflowing, The Lost Castle, Exosphere Worldgen Refabricated |
 | Деревни и мобы | Minecraft Comes Alive, Millager, Civillis, Cube Animals, UntitledDuck, Wolf Saddle-Bag, Gamingbarn's Morphs, Alex's Mobs Continued 2.2.2, Flying Unicorns, Silly Goose |
-| Предметы и геймплей | Waystones 26.1.2.13, Artifacts, Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee, Smart Backpacks, Utilities Plus, Hats, Seatify, Rails Revamped, Ultimate Minecarts, Clutter No More |
+| Предметы и геймплей | Waystones 26.1.2.13, Artifacts + Trinkets Updated (слоты для шляп и аксессуаров), Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee, Smart Backpacks, Utilities Plus, Hats, Seatify, Rails Revamped, Ultimate Minecarts, Clutter No More |
 | Декор | Macaw's Furniture/Bridges, Farmhouse Decorations, Carved Wood, Simply Cozy, Heraldics, Woven In Time, Assorted Discoveries 3.1.1, Slabbed, The Block Box, Cluttered, Better Fish Tanks |
-| Клиентские (на сервере пропускаются) | Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY + Interactive Foliage, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames, Traveler's Titles, Mod Menu (нужен Utilities Plus), Enhanced Tooltips, Yumemigusa |
+| Клиентские (на сервере пропускаются) | Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames, Traveler's Titles, Mod Menu (нужен Utilities Plus), Enhanced Tooltips, Yumemigusa |
 | Только сервер | EasyWhitelist 1.1.4 — whitelist по нику для офлайн-режима |
 
 > Все моды должны работать на Fabric Loader **0.19.2** — такой стоит во встроенной версии

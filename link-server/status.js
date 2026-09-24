@@ -49,7 +49,11 @@ function createStatusReader(rcon) {
 
   async function fetchStatus() {
     try {
-      const [list, time, difficulty] = await Promise.all([run('list'), run('time query time'), run('difficulty')]);
+      // Строго по очереди: у Minecraft один общий буфер ответа на все RCON-соединения, и
+      // параллельные команды склеивают вывод ("...online: NullsThe difficulty is Normal").
+      const list = await run('list');
+      const time = await run('time query time');
+      const difficulty = await run('difficulty');
       const players = parseList(list);
       const ticks = parseTime(time);
       // 24000 тиков = игровые сутки; день считаем с 1, как в «День 1» у игроков.
