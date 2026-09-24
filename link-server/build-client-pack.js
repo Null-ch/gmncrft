@@ -1,5 +1,5 @@
 'use strict';
-// Пересобирает client-pack.zip (README.txt + mods/*.jar, без инсталляторов) при каждом
+// Пересобирает client-pack.zip (README.txt + mods/*.jar + shaderpacks/*.zip, без инсталляторов) при каждом
 // старте link-server - раньше это был ручной шаг (scripts/build-client-pack.sh на хосте),
 // теперь просто docker compose restart link-server после правки mods/.
 // Та же инструкция показывается на сайте (/client и /client/readme.txt): её текст
@@ -20,6 +20,24 @@ function listModJars(modsDir) {
     return []; // mods/ может отсутствовать
   }
 }
+
+// Шейдерпаки (shaders/) и текстур-паки (resourcepacks/) - .zip, кладутся в архив как есть,
+// игрок не распаковывает их.
+function listPackZips(dir) {
+  if (!dir) return [];
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.toLowerCase().endsWith('.zip'))
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return []; // папка может отсутствовать
+  }
+}
+
+// Путь к папке игры для шагов инструкции: "AppData\Roaming\.minecraft\<folder>" + как её открыть.
+const gameFolderHint = (folder) =>
+  `AppData\\Roaming\\.minecraft\\${folder} (полный путь: C:\\Users\\<имя пользователя>\\AppData\\Roaming\\.minecraft\\${folder}, быстро открыть — Win+R → %APPDATA%\\.minecraft\\${folder}). Если папки ${folder} нет — один раз запусти игру с модами или создай её сам.`;
 
 // "fabric-api-0.155.3+26.1.2.jar" -> "0.155.3+26.1.2": версию Fabric API полезно знать
 // игроку, который ставит моды не из архива.
@@ -67,8 +85,14 @@ function minLoaderVersion(modsDir, modJars) {
  * Инструкция установки клиента: версии, шаги по разделам и список модов. Из неё
  * рендерятся и HTML на /client (server.js), и README.txt (guideToText ниже).
  */
-function clientGuide({ mcVersion, serverAddress, modsDir }) {
+function clientGuide({ mcVersion, serverAddress, modsDir, shadersDir, resourcePacksDir }) {
   const mods = modsDir ? listModJars(modsDir) : [];
+  const shaders = listPackZips(shadersDir);
+  const resourcePacks = listPackZips(resourcePacksDir);
+  const extras = [
+    ...(shaders.length ? ['папка shaderpacks с шейдерами (.zip)'] : []),
+    ...(resourcePacks.length ? ['папка resourcepacks с текстур-паками (.zip)'] : []),
+  ];
   const apiVersion = fabricApiVersion(mods);
   const minLoader = modsDir ? minLoaderVersion(modsDir, mods) : null;
   const loaderLabel = minLoader ? `${minLoader} или новее` : 'последняя стабильная';
@@ -81,8 +105,9 @@ function clientGuide({ mcVersion, serverAddress, modsDir }) {
       ...(apiVersion ? [['Версия Fabric API', apiVersion]] : []),
       ['Java', '25 или новее'],
     ],
-    intro:
-      'В архиве с сервера — этот README и папка mods с модами (.jar). Сам Minecraft с Fabric ставится лаунчером. ',
+    intro: `В архиве с сервера — этот README и папка mods с модами (.jar)${
+      extras.length ? `, а также ${extras.join(' и ')}` : ''
+    }. Сам Minecraft с Fabric ставится лаунчером.`,
     sections: [
       {
         title: 'T-Launcher (без лицензии)',
@@ -105,8 +130,37 @@ function clientGuide({ mcVersion, serverAddress, modsDir }) {
           `Ошибка «Replace mod 'Fabric Loader' … with version … or later» значит, что Fabric Loader в лаунчере слишком старый (нужен ${loaderLabel}): поставь новее через Fabric Installer (${FABRIC_INSTALLER_URL}) и выбери в лаунчере появившуюся версию «fabric-loader-…-${mcVersion}».`,
         ],
       },
+      ...(shaders.length
+        ? [
+            {
+              title: 'Шейдеры (по желанию)',
+              steps: [
+                'Шейдеры работают через моды Iris и Sodium — они уже есть в папке mods архива.',
+                'Возьми архив шейдеров из папки shaderpacks архива (.zip) и НЕ распаковывай его.',
+                `Положи этот .zip как есть в папку ${gameFolderHint('shaderpacks')}`,
+                'Запусти игру и открой «Настройки» → «Настройки графики» → «Наборы шейдеров».',
+                'Выбери в списке архив шейдеров, который положил ранее, и нажми «Применить».',
+              ],
+            },
+          ]
+        : []),
+      ...(resourcePacks.length
+        ? [
+            {
+              title: 'Текстур-пак (по желанию)',
+              steps: [
+                'Возьми текстур-пак из папки resourcepacks архива (.zip) и НЕ распаковывай его.',
+                `Положи этот .zip как есть в папку ${gameFolderHint('resourcepacks')}`,
+                'Запусти игру и открой «Настройки» → «Пакеты ресурсов».',
+                'В левом списке («Доступные») наведи на текстур-пак и нажми стрелку — он переместится в правый список («Выбранные»). Нажми «Готово».',
+              ],
+            },
+          ]
+        : []),
     ],
     mods,
+    shaders,
+    resourcePacks,
   };
 }
 
@@ -123,26 +177,38 @@ function guideToText(guide) {
     out.push('', '', `Моды сервера (${guide.mods.length})`, '-'.repeat(60));
     for (const jar of guide.mods) out.push(`- ${jar}`);
   }
+  if (guide.shaders.length) {
+    out.push('', '', `Шейдеры (${guide.shaders.length})`, '-'.repeat(60));
+    for (const pack of guide.shaders) out.push(`- ${pack}`);
+  }
+  if (guide.resourcePacks.length) {
+    out.push('', '', `Текстур-паки (${guide.resourcePacks.length})`, '-'.repeat(60));
+    for (const pack of guide.resourcePacks) out.push(`- ${pack}`);
+  }
   out.push('', 'Приятной игры!', '');
   return out.join('\n');
 }
 
 /**
- * В архив: README.txt (инструкция, версии, список модов) + mods/*.jar.
- * guideOptions - то же, что для clientGuide (mcVersion, serverAddress).
+ * В архив: README.txt (инструкция, версии, список модов) + mods/*.jar + shaderpacks/*.zip
+ * + resourcepacks/*.zip. guideOptions - то же, что для clientGuide (mcVersion, serverAddress).
  */
-function buildClientPack({ modsDir, outPath, ...guideOptions }) {
+function buildClientPack({ modsDir, shadersDir, resourcePacksDir, outPath, ...guideOptions }) {
   const modJars = listModJars(modsDir);
+  const shaderPacks = listPackZips(shadersDir);
+  const resourcePacks = listPackZips(resourcePacksDir);
   if (!modJars.length) {
     console.warn(`[client-pack] В ${modsDir} нет .jar - пропускаю сборку`);
     return false;
   }
 
   // CRLF - чтобы README нормально открывался и в Блокноте на старых Windows.
-  const readme = guideToText(clientGuide({ ...guideOptions, modsDir })).replace(/\n/g, '\r\n');
+  const readme = guideToText(clientGuide({ ...guideOptions, modsDir, shadersDir, resourcePacksDir })).replace(/\n/g, '\r\n');
   const entries = [
     { name: 'README.txt', data: Buffer.from(readme, 'utf8') },
     ...modJars.map((jar) => ({ name: `mods/${jar}`, data: fs.readFileSync(path.join(modsDir, jar)) })),
+    ...shaderPacks.map((pack) => ({ name: `shaderpacks/${pack}`, data: fs.readFileSync(path.join(shadersDir, pack)) })),
+    ...resourcePacks.map((pack) => ({ name: `resourcepacks/${pack}`, data: fs.readFileSync(path.join(resourcePacksDir, pack)) })),
   ];
 
   // Пишем во временный файл и переименовываем: /client/file не отдаст недописанный архив.
@@ -151,8 +217,8 @@ function buildClientPack({ modsDir, outPath, ...guideOptions }) {
   fs.renameSync(tmpPath, outPath);
 
   const { size } = fs.statSync(outPath);
-  console.log(`[client-pack] Собран ${outPath} (${modJars.length} модов + README.txt, ${(size / 1024 / 1024).toFixed(1)} МБ)`);
+  console.log(`[client-pack] Собран ${outPath} (${modJars.length} модов + ${shaderPacks.length} шейдеров + ${resourcePacks.length} текстур-паков + README.txt, ${(size / 1024 / 1024).toFixed(1)} МБ)`);
   return true;
 }
 
-module.exports = { buildClientPack, clientGuide, guideToText, minLoaderVersion, listModJars };
+module.exports = { buildClientPack, clientGuide, guideToText, minLoaderVersion, listModJars, listPackZips };

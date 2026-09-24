@@ -13,6 +13,8 @@ minecraft-server/
 ├── fabric-server-mc.26.1.2-loader.0.19.5-launcher.1.1.2.jar  # Fabric-сервер ставится из него
 ├── .env.example                        # шаблон настроек -> скопировать в .env
 ├── mods/                               # .jar моды (копируются на сервер и в клиент-пак)
+├── shaders/                            # шейдерпаки .zip (только в клиент-пак, папка shaderpacks/)
+├── resourcepacks/                      # текстур-паки .zip (только в клиент-пак, папка resourcepacks/)
 ├── link-server/                        # сайт, заявки, сборка архива модов для клиента (Node, без зависимостей)
 ├── link-data/                          # заявки на игру (создаётся автоматически)
 ├── scripts/
@@ -118,7 +120,7 @@ RCON наружу по-прежнему не открыт. Подавший с �
 | Деревни и мобы | Minecraft Comes Alive, Millager, Civillis, Cube Animals, UntitledDuck, Wolf Saddle-Bag, Gamingbarn's Morphs, Alex's Mobs Continued 2.2.2, Flying Unicorns, Silly Goose |
 | Предметы и геймплей | Waystones 26.1.2.13, Artifacts + Trinkets Updated (слоты для шляп и аксессуаров), Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee, Smart Backpacks, Utilities Plus, Hats, Seatify, Rails Revamped, Ultimate Minecarts, Clutter No More |
 | Декор | Macaw's Furniture/Bridges, Farmhouse Decorations, Carved Wood, Simply Cozy, Heraldics, Woven In Time, Assorted Discoveries 3.1.1, Slabbed, The Block Box, Cluttered, Better Fish Tanks |
-| Клиентские (на сервере пропускаются) | Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames, Traveler's Titles, Mod Menu (нужен Utilities Plus), Enhanced Tooltips, Yumemigusa |
+| Клиентские (на сервере пропускаются) | Sodium 0.9.2, Iris 1.11.4 (шейдеры), Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames, Traveler's Titles, Mod Menu (нужен Utilities Plus), Enhanced Tooltips, Yumemigusa |
 | Только сервер | EasyWhitelist 1.1.4 — whitelist по нику для офлайн-режима |
 
 > Все моды должны работать на Fabric Loader **0.19.2** — такой стоит во встроенной версии
@@ -141,6 +143,54 @@ RCON наружу по-прежнему не открыт. Подавший с �
 docker compose restart mc link-server   # сервер + пересборка архива для клиента
 ```
 
+## Шейдеры
+
+Шейдерпаки (`.zip`, сейчас `BSL_v10.1.8.zip`) лежат в `shaders/` и кладутся в архив для
+клиента в папку `shaderpacks/` как есть, без распаковки. На сервер они не копируются.
+Для шейдеров у игрока должны стоять клиентские моды Iris и Sodium — они уже в `mods/`.
+Инструкция по установке шейдеров сама добавляется в `README.txt` архива и на страницу
+`/client`, если в `shaders/` есть хотя бы один `.zip`.
+
+После изменения `shaders/`:
+
+```bash
+docker compose restart link-server   # пересборка архива для клиента
+```
+
+### Инструкция для игроков: как подключить шейдеры
+
+1. Скачай архив с сайта сервера (`/client`), распакуй его и поставь моды из папки `mods`
+   как обычно (Iris и Sodium уже среди них).
+2. Возьми архив шейдеров из папки `shaderpacks` (например, `BSL_v10.1.8.zip`) и
+   **не распаковывай его**.
+3. Положи этот `.zip` как есть в папку `AppData\Roaming\.minecraft\shaderpacks`
+   (полный путь: `C:\Users\<имя пользователя>\AppData\Roaming\.minecraft\shaderpacks`;
+   быстро открыть — `Win+R` → `%APPDATA%\.minecraft\shaderpacks`). Если папки `shaderpacks`
+   нет — один раз запусти игру с модами или создай её сам.
+4. Запусти игру и открой **Настройки → Настройки графики → Наборы шейдеров**.
+5. Выбери в списке архив шейдеров, который положил ранее, и нажми **Применить**.
+
+## Текстур-паки
+
+Текстур-паки (`.zip`, сейчас [Faithful 32x](https://modrinth.com/resourcepack/faithful-32x)
+`Faithful 32x - 26.1.zip` — ванильный стиль в 32x) лежат в `resourcepacks/` и так же, как
+шейдеры, кладутся в архив для клиента в папку `resourcepacks/` без распаковки, а инструкция
+добавляется в `README.txt` и на `/client`. На сервер не копируются, модов не требуют.
+Текстур-пак меняет только ванильные блоки и мобов, поэтому выбран пак в ванильном стиле —
+так модовые блоки не выбиваются. После изменения `resourcepacks/` —
+`docker compose restart link-server`.
+
+### Инструкция для игроков: как подключить текстур-пак
+
+1. Возьми текстур-пак из папки `resourcepacks` архива (например, `Faithful 32x - 26.1.zip`)
+   и **не распаковывай его**.
+2. Положи этот `.zip` как есть в папку `AppData\Roaming\.minecraft\resourcepacks`
+   (полный путь: `C:\Users\<имя пользователя>\AppData\Roaming\.minecraft\resourcepacks`;
+   быстро открыть — `Win+R` → `%APPDATA%\.minecraft\resourcepacks`).
+3. Запусти игру и открой **Настройки → Пакеты ресурсов**.
+4. В левом списке («Доступные») наведи на текстур-пак и нажми стрелку — он переместится в
+   правый список («Выбранные»). Нажми **Готово**.
+
 ## Сайт, бэкап и клиент-пак
 
 `caddy` получает HTTPS-сертификат для `LINK_DOMAIN` (A-запись → IP VPS) и проксирует на
@@ -153,7 +203,7 @@ docker compose restart mc link-server   # сервер + пересборка а
 - `/backup` — скачивание самого свежего архива из `backups/`;
 - `/client` — инструкция по установке клиента (версии Minecraft/Fabric, T-Launcher и
   официальный лаунчер) и кнопка скачивания архива: `README.txt` с той же инструкцией,
-  версиями и списком модов + папка `mods/`. Инсталляторы в архив не кладутся — Fabric
+  версиями и списком модов + папка `mods/` + папка `shaderpacks/` (шейдеры из `shaders/`) + папка `resourcepacks/`. Инсталляторы в архив не кладутся — Fabric
   игрок ставит лаунчером;
 - `/client/readme.txt` — только README, без пароля;
 - `/api/applications` — API заявок для бота (`Authorization: Bearer <BOT_API_TOKEN>`).

@@ -22,6 +22,8 @@ const DOWNLOAD_PASSWORD = process.env.DOWNLOAD_PASSWORD;
 const BACKUP_DIR = process.env.BACKUP_DIR || '/repo/backups';
 const CLIENT_PACK_PATH = process.env.CLIENT_PACK_PATH || '/repo/client-pack.zip';
 const MODS_DIR = process.env.MODS_DIR || '/repo/mods';
+const SHADERS_DIR = process.env.SHADERS_DIR || '/repo/shaders';
+const RESOURCE_PACKS_DIR = process.env.RESOURCE_PACKS_DIR || '/repo/resourcepacks';
 const SERVER_ADDRESS = process.env.SERVER_ADDRESS || '2.26.224.164:25565';
 const MOTD = process.env.MOTD || 'Minecraft-сервер';
 const FABRIC_LAUNCHER_FILE = process.env.FABRIC_LAUNCHER_FILE || '';
@@ -701,7 +703,7 @@ function renderLandingPage({ title, subtitle, tip, downloadPath, buttonLabel }) 
 }
 
 // Параметры инструкции установки - общие для /client, /client/readme.txt и README в архиве.
-const guideOptions = () => ({ ...parseFabricVersion(FABRIC_LAUNCHER_FILE), serverAddress: SERVER_ADDRESS, modsDir: MODS_DIR });
+const guideOptions = () => ({ ...parseFabricVersion(FABRIC_LAUNCHER_FILE), serverAddress: SERVER_ADDRESS, modsDir: MODS_DIR, shadersDir: SHADERS_DIR, resourcePacksDir: RESOURCE_PACKS_DIR });
 
 // Ссылки в шагах инструкции делаем кликабельными; остальной текст экранируется.
 const linkify = (text) =>
@@ -721,13 +723,15 @@ function renderClientPage() {
         .join('')}</ol></div>`,
     )
     .join('');
-  const modsList = modsDetails('В архиве: моды', guide.mods);
+  const modsList = modsDetails('В архиве: моды', guide.mods) +
+    modsDetails('В архиве: шейдеры', guide.shaders) +
+    modsDetails('В архиве: текстур-паки', guide.resourcePacks);
   return page(
     'Установка клиента',
     `    <h1>Установка клиента</h1>
     <p class="subtitle">${esc(guide.intro)}</p>
     ${facts}
-    <a class="btn" href="/client/file">Скачать архив (моды + README)</a>
+    <a class="btn" href="/client/file">Скачать архив (моды${guide.shaders.length ? ' + шейдеры' : ''}${guide.resourcePacks.length ? ' + текстуры' : ''} + README)</a>
     <a class="btn" href="/client/readme.txt">Только README.txt</a>
     <div class="lock">🔒 Для скачивания архива нужен пароль — спроси у администратора сервера.</div>
     ${sections}

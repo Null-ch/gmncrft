@@ -94,6 +94,10 @@ services:
       BACKUP_DIR: "/repo/backups"
       CLIENT_PACK_PATH: "/app/client-pack.zip"
       MODS_DIR: "/repo/mods"
+      # Шейдерпаки (.zip) - попадают в архив для клиента в папку shaderpacks/.
+      SHADERS_DIR: "/repo/shaders"
+      # Текстур-паки (.zip) - в архив для клиента в папку resourcepacks/.
+      RESOURCE_PACKS_DIR: "/repo/resourcepacks"
       SERVER_ADDRESS: "${SERVER_ADDRESS:-2.26.224.164:25565}"
       MOTD: "${MOTD:-A Fabric 26.1.2 Server}"
       # Из имени серверного launcher-jar сайт берёт версии Minecraft и Fabric loader.
