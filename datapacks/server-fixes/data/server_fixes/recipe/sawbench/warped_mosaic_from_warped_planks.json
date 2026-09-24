@@ -1,8 +1,0 @@
-{
-  "type": "utilitiesplus:sawbench",
-  "ingredient": "minecraft:warped_planks",
-  "result": {
-    "count": 1,
-    "id": "carved_wood:warped_mosaic"
-  }
-}

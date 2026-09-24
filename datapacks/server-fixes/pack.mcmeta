@@ -1,7 +1,0 @@
-{
-  "pack": {
-    "description": "Server fixes: recipe conflicts caused by Clutter No More",
-    "min_format": 101,
-    "max_format": 101
-  }
-}

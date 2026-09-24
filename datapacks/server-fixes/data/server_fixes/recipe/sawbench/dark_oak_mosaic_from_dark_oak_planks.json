@@ -1,8 +1,0 @@
-{
-  "type": "utilitiesplus:sawbench",
-  "ingredient": "minecraft:dark_oak_planks",
-  "result": {
-    "count": 1,
-    "id": "carved_wood:dark_oak_mosaic"
-  }
-}
