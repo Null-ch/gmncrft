@@ -590,7 +590,7 @@ function renderStatusInner(status) {
     status.difficulty ? `<span class="chip">⚔ ${esc(status.difficulty)}</span>` : '',
   ].join('');
   const players = status.playerNames.length
-    ? status.playerNames.map((name) => `<span class="chip player">☺ ${esc(name)}</span>`).join('')
+    ? status.playerNames.map((name) => `<span class="chip player"> ${esc(name)}</span>`).join('')
     : '<span class="status-note" style="margin:0">Сейчас никого нет — стань первым!</span>';
   return `<div class="status-head">
         <span class="status-badge"><span class="dot"></span>Онлайн</span>
