@@ -6,7 +6,8 @@
 // стилизовать). Пароль бот тоже умеет передавать напрямую заголовком (без формы).
 // Ссылки бессрочные: /backup/file всегда резолвит САМЫЙ НОВЫЙ файл в BACKUP_DIR.
 // Плюс заявки на игру (/apply с сайта, /api/applications для Discord-бота): одобренный
-// ник добавляется в whitelist через RCON - контейнер mc в той же Docker-сети.
+// ник добавляется в whitelist через RCON - контейнер mc в той же Docker-сети. Через RCON
+// же главная показывает живой статус сервера (status.js, /status.json для автообновления).
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -14,6 +15,7 @@ const crypto = require('crypto');
 const { buildClientPack, clientGuide, guideToText, minLoaderVersion, listModJars } = require('./build-client-pack');
 const { rconCommand } = require('./rcon');
 const { createApplicationStore, ApplicationError } = require('./applications');
+const { createStatusReader } = require('./status');
 
 const PORT = Number(process.env.PORT || 8080);
 const DOWNLOAD_PASSWORD = process.env.DOWNLOAD_PASSWORD;
@@ -33,6 +35,16 @@ const RCON = {
   port: Number(process.env.RCON_PORT || 25575),
   password: process.env.RCON_PASSWORD || '',
 };
+// Настройки игры из того же .env, что и у mc - только для показа на главной.
+const GAME = {
+  mode: process.env.GAME_MODE || 'survival',
+  pvp: process.env.PVP !== 'false',
+  onlineMode: process.env.ONLINE_MODE !== 'false',
+  maxPlayers: Number(process.env.MAX_PLAYERS || 20),
+};
+const GAME_MODES = { survival: 'Выживание', creative: 'Творческий', adventure: 'Приключение', spectator: 'Наблюдатель' };
+
+const getServerStatus = createStatusReader(RCON);
 
 if (!DOWNLOAD_PASSWORD) {
   console.error('DOWNLOAD_PASSWORD не задан - без него сервер не может проверять доступ к файлам. Останавливаюсь.');
@@ -323,12 +335,210 @@ const BASE_STYLE = `
   .guide ol { margin: 0; padding-left: 22px; }
   .guide li { color: #ddd; font-size: 13px; line-height: 1.6; margin-bottom: 4px; overflow-wrap: anywhere; }
   .guide a { color: #7CFC00; }
+  .guide ul { margin: 0; padding-left: 18px; }
+
+  /* Живой статус сервера (RCON), обновляется скриптом раз в 30 секунд. */
+  .status-box {
+    background: #2b2b2b;
+    border: 2px solid #000;
+    box-shadow: inset 2px 2px 0 #444, inset -2px -2px 0 #1a1a1a;
+    padding: 12px;
+    margin: 0 0 14px;
+    text-align: left;
+  }
+  .status-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .status-badge { font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; text-shadow: 1px 1px 0 #000; }
+  .status-badge .dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border: 2px solid #000; vertical-align: middle; }
+  .status-box.online .status-badge { color: #7CFC00; }
+  .status-box.online .dot { background: #7CFC00; animation: blink 2s steps(1) infinite; }
+  .status-box.offline .status-badge { color: #ff8a8a; }
+  .status-box.offline .dot { background: #ff5555; }
+  @keyframes blink { 50% { background: #3d6b26; } }
+  .status-players { color: #fff; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000; }
+  .status-players small { color: #aaa; font-size: 13px; font-weight: normal; text-shadow: none; }
+  .bar { height: 12px; margin: 10px 0 8px; background: #1a1a1a; border: 2px solid #000; }
+  .bar > span { display: block; height: 100%; background: repeating-linear-gradient(90deg, #7CFC00 0 8px, #5fcf00 8px 16px); }
+  .status-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: #3a3a3a;
+    border: 2px solid #000;
+    color: #ddd;
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+  .chip.player { color: #ffcf4d; }
+  .status-note { color: #aaa; font-size: 12px; margin-top: 8px; }
+
+  .section-title {
+    color: #fff;
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-shadow: 2px 2px 0 #2b2b2b;
+    margin: 18px 0 8px;
+    text-align: left;
+  }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; }
+  .stat { background: #2b2b2b; border: 2px solid #000; padding: 8px 4px; }
+  .stat b { display: block; color: #7CFC00; font-size: 18px; text-shadow: 1px 1px 0 #000; }
+  .stat span { color: #aaa; font-size: 11px; text-transform: uppercase; }
+  @media (max-width: 420px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Адрес сервера: клик копирует его в буфер обмена. */
+  .copy {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: bold;
+    color: #7CFC00;
+    cursor: pointer;
+    text-align: right;
+    word-break: break-all;
+  }
+  .copy::after { content: ' ⧉'; color: #aaa; }
+  .copy:hover { text-decoration: underline dotted; }
+  .copy.copied::after { content: ' ✔'; color: #7CFC00; }
+  .server .copy { text-align: center; font-weight: normal; font-size: 14px; }
+
+  /* Сворачиваемый список модов: сводка - тёмная плашка со значком-кнопкой. */
+  details.mods-box { margin: 14px 0; text-align: left; }
+  details.mods-box > summary {
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #2b2b2b;
+    border: 2px solid #000;
+    padding: 8px 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  details.mods-box > summary::-webkit-details-marker { display: none; }
+  details.mods-box > summary .mods-title { margin: 0; }
+  .toggle {
+    width: 26px;
+    height: 26px;
+    line-height: 20px;
+    text-align: center;
+    background: #6b6b6b;
+    border: 2px solid #000;
+    box-shadow: inset 2px 2px 0 #b1b1b1, inset -2px -2px 0 #373737;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+  }
+  .toggle::before { content: '+'; }
+  details[open] > summary .toggle::before { content: '−'; }
+  details.mods-box > summary:hover .toggle { background: #7d7d7d; }
+  details.mods-box .mods { margin: 0; border-top: 0; }
+
+  .to-top {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    width: 48px;
+    height: 48px;
+    margin: 0;
+    padding: 0;
+    font-size: 20px;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
+    z-index: 10;
+  }
+  .to-top.visible { opacity: 1; pointer-events: auto; transform: none; }
+  .btn:hover { background: #7d7d7d; }
+  .btn.secondary:hover { background: #5a5a5a; }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translate(-50%, 16px);
+    background: #1f4a1f;
+    border: 3px solid #000;
+    box-shadow: 4px 4px 0 rgba(0,0,0,.4);
+    color: #7CFC00;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 10px 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    z-index: 11;
+  }
+  .toast.visible { opacity: 1; transform: translate(-50%, 0); }
 `;
+
+// Общий скрипт всех страниц: кнопка «Наверх» (появляется, когда страницу пролистали)
+// и копирование адреса сервера по клику. navigator.clipboard работает только по HTTPS
+// (сайт за caddy) - на http://localhost при разработке срабатывает запасной execCommand.
+const UI_SCRIPT = `
+(function () {
+  var toTop = document.querySelector('.to-top');
+  var toast = document.querySelector('.toast');
+  var toastTimer;
+  function onScroll() { toTop.classList.toggle('visible', window.scrollY > 200); }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  toTop.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+
+  function showToast(text) {
+    toast.textContent = text;
+    toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.classList.remove('visible'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(area);
+    return ok ? Promise.resolve() : Promise.reject();
+  }
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest('.copy');
+    if (!button) return;
+    var text = button.getAttribute('data-copy');
+    var copy = navigator.clipboard && window.isSecureContext
+      ? navigator.clipboard.writeText(text).catch(function () { return fallbackCopy(text); })
+      : fallbackCopy(text);
+    copy.then(function () {
+      button.classList.add('copied');
+      setTimeout(function () { button.classList.remove('copied'); }, 1800);
+      showToast('Адрес скопирован: ' + text);
+    }, function () { showToast('Не удалось скопировать — выдели адрес вручную'); });
+  });
+})();
+`;
+
+// Адрес сервера, который копируется по клику (см. UI_SCRIPT).
+const copyAddress = () =>
+  `<button type="button" class="copy" data-copy="${esc(SERVER_ADDRESS)}" title="Нажми, чтобы скопировать">${esc(SERVER_ADDRESS)}</button>`;
+
+// Сворачиваемый список модов (по умолчанию свёрнут), внутри - прокручиваемый блок.
+function modsDetails(title, mods) {
+  if (!mods.length) return '';
+  return `<details class="mods-box">
+      <summary><span class="mods-title">${esc(title)} (${mods.length})</span><span class="toggle" aria-hidden="true"></span></summary>
+      <div class="mods"><ul>${mods.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>
+    </details>`;
+}
 
 const HOME_LINK = '<div class="nav"><a class="btn secondary" href="/">← На главную</a></div>';
 
 // wide - для длинных страниц (инструкция на /client), остальным хватает узкой карточки.
-function page(title, body, { wide = false } = {}) {
+// script - дополнительный JS страницы (выполняется после общего UI_SCRIPT).
+function page(title, body, { wide = false, script = '' } = {}) {
   return `<!doctype html>
 <html lang="ru">
 <head>
@@ -341,79 +551,146 @@ function page(title, body, { wide = false } = {}) {
   <div class="card${wide ? ' wide' : ''}">
 ${body}
   </div>
+  <button type="button" class="btn to-top" aria-label="Наверх" title="Наверх">▲</button>
+  <div class="toast" role="status" aria-live="polite"></div>
+  <script>${UI_SCRIPT}${script}</script>
 </body>
 </html>`;
 }
 
-function renderHomePage() {
+const plural = (n, one, few, many) => {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+};
+
+// Внутренность блока статуса - и для первой отрисовки, и для обновления скриптом
+// (/status.json отдаёт готовый HTML, чтобы разметка жила в одном месте).
+function renderStatusInner(status) {
+  if (!status.online) {
+    return `<div class="status-head">
+        <span class="status-badge"><span class="dot"></span>Офлайн</span>
+        <span class="status-players">— <small>/ ${GAME.maxPlayers}</small></span>
+      </div>
+      <div class="status-note">Сервер выключен или перезапускается — загляни через пару минут.</div>`;
+  }
+  const max = status.maxPlayers || GAME.maxPlayers;
+  const online = status.players ?? 0;
+  const fill = max ? Math.min(100, Math.round((online / max) * 100)) : 0;
+  const meta = [
+    status.day != null ? `<span class="chip">📅 День ${status.day}</span>` : '',
+    status.clock ? `<span class="chip">${status.isDay ? '☀' : '☾'} ${esc(status.clock)}</span>` : '',
+    status.difficulty ? `<span class="chip">⚔ ${esc(status.difficulty)}</span>` : '',
+  ].join('');
+  const players = status.playerNames.length
+    ? status.playerNames.map((name) => `<span class="chip player">☺ ${esc(name)}</span>`).join('')
+    : '<span class="status-note" style="margin:0">Сейчас никого нет — стань первым!</span>';
+  return `<div class="status-head">
+        <span class="status-badge"><span class="dot"></span>Онлайн</span>
+        <span class="status-players">${online} <small>/ ${max} ${plural(max, 'игрок', 'игрока', 'игроков')}</small></span>
+      </div>
+      <div class="bar"><span style="width:${fill}%"></span></div>
+      <div class="status-meta">${meta}</div>
+      <div class="section-title" style="font-size:12px;margin:10px 0 6px">Сейчас играют</div>
+      <div class="status-meta">${players}</div>`;
+}
+
+// Раз в 30 секунд подтягивает свежий статус без перезагрузки страницы.
+const STATUS_SCRIPT = `
+(function () {
+  var box = document.getElementById('status');
+  setInterval(function () {
+    if (document.hidden) return;
+    fetch('/status.json', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        box.className = 'status-box ' + (data.online ? 'online' : 'offline');
+        box.innerHTML = data.html;
+      })
+      .catch(function () {});
+  }, 30000);
+})();
+`;
+
+function renderHomePage(status) {
   const { mcVersion } = parseFabricVersion(FABRIC_LAUNCHER_FILE);
+  const modJars = listModJars(MODS_DIR);
   // Показываем минимум для клиента (из модов), а не версию loader'а сервера - см. minLoaderVersion.
-  const minLoader = minLoaderVersion(MODS_DIR, listModJars(MODS_DIR));
+  const minLoader = minLoaderVersion(MODS_DIR, modJars);
   const mods = listMods();
+  const hasMod = (prefix) => modJars.some((jar) => jar.toLowerCase().startsWith(prefix));
 
-  const modsList = mods.length
-    ? `<div class="mods"><div class="mods-title">Установленные моды (${mods.length})</div><ul>${mods
-        .map((m) => `<li>${esc(m)}</li>`)
-        .join('')}</ul></div>`
-    : '';
+  // Особенности собираются из настроек и списка модов - чтобы не врать, если что-то убрали.
+  const features = [
+    `${mods.length} ${plural(mods.length, 'мод', 'мода', 'модов')} на Fabric: новые структуры, мобы, предметы и декор`,
+    hasMod('mca-') && 'Живые жители Minecraft Comes Alive — с ними можно дружить, торговать и даже создать семью',
+    hasMod('waystones') && 'Путевые камни (Waystones) для быстрых перемещений по миру',
+    hasMod('xaerominimap') && 'Мини-карта и карта мира Xaero',
+    GAME.pvp ? 'PvP включено — будь осторожен вдали от дома' : 'PvP выключено — игроки не могут атаковать друг друга',
+    'Whitelist: играют только одобренные игроки',
+    !GAME.onlineMode && 'Лицензия не нужна — можно заходить через T-Launcher',
+  ].filter(Boolean);
 
-  return `<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(MOTD)}</title>
-<style>${BASE_STYLE}</style>
-</head>
-<body>
-  <div class="card">
-    <h1>${esc(MOTD)}</h1>
+  return page(
+    MOTD,
+    `    <h1>${esc(MOTD)}</h1>
     <p class="subtitle">Fabric-сервер Minecraft — присоединяйся!</p>
 
-    <div class="info-row"><span>Версия Minecraft</span><b>${esc(mcVersion)}</b></div>
-    ${minLoader ? `<div class="info-row"><span>Версия Fabric Loader</span><b>${esc(minLoader)} или новее</b></div>` : ''}
-    <div class="info-row"><span>Адрес сервера</span><b>${esc(SERVER_ADDRESS)}</b></div>
+    <div id="status" class="status-box ${status.online ? 'online' : 'offline'}">${renderStatusInner(status)}</div>
 
-    ${modsList}
+    <div class="info-row"><span>Адрес сервера</span>${copyAddress()}</div>
+    <div class="info-row"><span>Версия Minecraft</span><b>${esc(mcVersion)}</b></div>
+    ${minLoader ? `<div class="info-row"><span>Версия Fabric Loader</span><b>${esc(minLoader)}</b></div>` : ''}
+    <div class="info-row"><span>Режим игры</span><b>${esc(GAME_MODES[GAME.mode] || GAME.mode)}</b></div>
+
+    <div class="stats">
+      <div class="stat"><b>${mods.length}</b><span>${plural(mods.length, 'мод', 'мода', 'модов')}</span></div>
+      <div class="stat"><b>${status.online ? status.players ?? 0 : '—'}</b><span>онлайн</span></div>
+      <div class="stat"><b>${status.online && status.day != null ? status.day : '—'}</b><span>игровой день</span></div>
+    </div>
 
     <a class="btn" href="/apply">Подать заявку на игру</a>
-    <a class="btn" href="/backup">Скачать бэкап мира</a>
     <a class="btn" href="/client">Установка клиента и моды</a>
+    <a class="btn" href="/backup">Скачать бэкап мира</a>
     <div class="lock">🔒 Для скачивания файлов нужен пароль — спроси у администратора сервера.</div>
 
-    <p class="tip">Совет: на сервере включён whitelist — сначала подай заявку со своим ником, после одобрения можно заходить.</p>
-  </div>
-</body>
-</html>`;
+    <div class="section-title">Как начать играть</div>
+    <div class="guide"><ol>
+      <li>Подай <a href="/apply">заявку</a> со своим ником и дождись одобрения администратора.</li>
+      <li>Поставь Fabric ${esc(mcVersion)} и моды из архива — пошагово на странице <a href="/client">установки клиента</a>.</li>
+      <li>В игре: «Сетевая игра» → «Добавить сервер» → адрес ${copyAddress()}</li>
+    </ol></div>
+
+    <div class="section-title">Особенности сервера</div>
+    <div class="guide"><ul>${features.map((f) => `<li>${f}</li>`).join('')}</ul></div>
+
+    ${modsDetails('Установленные моды', mods)}
+
+    <p class="tip">Совет: на сервере включён whitelist — сначала подай заявку со своим ником, после одобрения можно заходить.</p>`,
+    { script: STATUS_SCRIPT },
+  );
 }
 
 // Скачивание запускается автоматически; кнопка остаётся как ручной запасной вариант.
 // Ведёт на /backup/file, где встретит форму пароля (см. renderPasswordForm).
 function renderLandingPage({ title, subtitle, tip, downloadPath, buttonLabel }) {
-  return `<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title>
-<style>${BASE_STYLE}</style>
-</head>
-<body>
-  <div class="card">
-    <h1>${esc(title)}</h1>
+  return page(
+    title,
+    `    <h1>${esc(title)}</h1>
     <p class="subtitle">${esc(subtitle)}</p>
     <a class="btn" id="dl" href="${esc(downloadPath)}">${esc(buttonLabel)}</a>
-    <div class="server">Адрес сервера: ${esc(SERVER_ADDRESS)}</div>
+    <div class="server">Адрес сервера: ${copyAddress()}</div>
     <p class="tip">Совет: ${esc(tip)}</p>
-    ${HOME_LINK}
-  </div>
-  <script>
+    ${HOME_LINK}`,
+    {
+      script: `
     window.addEventListener('load', function () {
       window.location.href = ${JSON.stringify(downloadPath)};
-    });
-  </script>
-</body>
-</html>`;
+    });`,
+    },
+  );
 }
 
 // Параметры инструкции установки - общие для /client, /client/readme.txt и README в архиве.
@@ -428,7 +705,7 @@ const linkify = (text) =>
 function renderClientPage() {
   const guide = clientGuide(guideOptions());
   const facts = guide.facts
-    .map(([k, v]) => `<div class="info-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`)
+    .map(([k, v]) => `<div class="info-row"><span>${esc(k)}</span>${v === SERVER_ADDRESS ? copyAddress() : `<b>${esc(v)}</b>`}</div>`)
     .join('');
   const sections = guide.sections
     .map(
@@ -437,11 +714,7 @@ function renderClientPage() {
         .join('')}</ol></div>`,
     )
     .join('');
-  const modsList = guide.mods.length
-    ? `<div class="mods"><div class="mods-title">В архиве: моды (${guide.mods.length})</div><ul>${guide.mods
-        .map((m) => `<li>${esc(m)}</li>`)
-        .join('')}</ul></div>`
-    : '';
+  const modsList = modsDetails('В архиве: моды', guide.mods);
   return page(
     'Установка клиента',
     `    <h1>Установка клиента</h1>
@@ -459,17 +732,9 @@ function renderClientPage() {
 
 // Своя форма пароля вместо нативного Basic Auth диалога браузера - тот стилизовать нельзя.
 function renderPasswordForm({ title, action, error }) {
-  return `<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title>
-<style>${BASE_STYLE}</style>
-</head>
-<body>
-  <div class="card">
-    <h1>${esc(title)}</h1>
+  return page(
+    title,
+    `    <h1>${esc(title)}</h1>
     <p class="subtitle">Введи пароль, чтобы скачать файл.</p>
     ${error ? `<div class="error">${esc(error)}</div>` : ''}
     <form method="POST" action="${esc(action)}">
@@ -477,10 +742,8 @@ function renderPasswordForm({ title, action, error }) {
       <button class="btn" type="submit">Скачать</button>
     </form>
     <div class="lock">🔒 Пароль знает тот, кто настраивал сервер (его же печатает Discord-бот).</div>
-    ${HOME_LINK}
-  </div>
-</body>
-</html>`;
+    ${HOME_LINK}`,
+  );
 }
 
 function renderApplyForm({ error, values = {} } = {}) {
@@ -514,7 +777,7 @@ function renderApplicationStatus(app) {
     `    <h1>Заявка: ${esc(app.nickname)}</h1>
     <div class="status ${esc(app.status)}">${STATUS_TEXT[app.status]}</div>
     ${app.status === 'pending' ? '<p class="subtitle">Сохрани ссылку на эту страницу и загляни позже — статус обновится здесь.</p>' : ''}
-    ${app.status === 'approved' ? `<div class="server">Адрес сервера: ${esc(SERVER_ADDRESS)}</div>` : ''}
+    ${app.status === 'approved' ? `<div class="server">Адрес сервера: ${copyAddress()}</div>` : ''}
     ${HOME_LINK}`,
   );
 }
@@ -647,7 +910,19 @@ const server = http.createServer((req, res) => {
 
   // Публичные страницы - открыты всем, кто знает ссылку.
   if (url.pathname === '/' && req.method === 'GET') {
-    return sendHtml(res, renderHomePage());
+    return getServerStatus().then((status) => sendHtml(res, renderHomePage(status)));
+  }
+
+  // Для автообновления блока статуса на главной (STATUS_SCRIPT).
+  if (url.pathname === '/status.json' && req.method === 'GET') {
+    return getServerStatus().then((status) =>
+      sendJson(res, 200, {
+        online: status.online,
+        players: status.online ? status.players : null,
+        maxPlayers: status.online ? status.maxPlayers : GAME.maxPlayers,
+        html: renderStatusInner(status),
+      }),
+    );
   }
 
   if (url.pathname === '/backup' && req.method === 'GET') {

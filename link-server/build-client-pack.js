@@ -82,11 +82,10 @@ function clientGuide({ mcVersion, serverAddress, modsDir }) {
       ['Java', '25 или новее'],
     ],
     intro:
-      'В архиве с сервера — этот README и папка mods с модами (.jar). Сам Minecraft с Fabric ставится лаунчером. ' +
-      'Если не уверен, что выбрать — используй вариант 1 (T-Launcher): он проще и не требует лицензии.',
+      'В архиве с сервера — этот README и папка mods с модами (.jar). Сам Minecraft с Fabric ставится лаунчером. ',
     sections: [
       {
-        title: 'Вариант 1. T-Launcher (без лицензии)',
+        title: 'T-Launcher (без лицензии)',
         steps: [
           'Скачай и установи T-Launcher с официального сайта: https://tlauncher.org',
           'Введи никнейм и нажми «Войти». Ник выбери сразу постоянный: доступ на сервер выдаётся именно на него (whitelist).',

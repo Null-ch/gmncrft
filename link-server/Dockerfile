@@ -4,6 +4,6 @@ FROM node:22-bookworm-slim
 # (встроенный zlib), так что образ собирается только из уже скачанного node-образа.
 
 WORKDIR /app
-COPY server.js build-client-pack.js zip.js rcon.js applications.js ./
+COPY server.js build-client-pack.js zip.js rcon.js applications.js status.js ./
 
 CMD ["node", "server.js"]

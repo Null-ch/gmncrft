@@ -103,6 +103,13 @@ services:
       APPLICATIONS_FILE: "/data/applications.json"
       WHITELIST_FILE: "/repo/data/whitelist.json"
       BOT_API_TOKEN: "${BOT_API_TOKEN:-}"
+      # Настройки игры - только для показа на главной (режим, PvP, бэкапы, лицензия).
+      # Онлайн, игроков, игровой день и сложность главная берёт у mc по RCON.
+      GAME_MODE: "${MODE:-survival}"
+      PVP: "${PVP:-true}"
+      ONLINE_MODE: "${ONLINE_MODE:-true}"
+      MAX_PLAYERS: "${MAX_PLAYERS:-20}"
+      BACKUP_INTERVAL: "${BACKUP_INTERVAL:-24h}"
       RCON_HOST: "mc"
       RCON_PORT: "25575"
       RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD in .env}"
