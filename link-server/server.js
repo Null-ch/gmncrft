@@ -246,6 +246,11 @@ const BASE_STYLE = `
     margin: 4px;
   }
   .btn:active { box-shadow: inset -2px -2px 0 #b1b1b1, inset 2px 2px 0 #373737; }
+  /* Кнопки главной: заявка на всю ширину, под ней две в ряд (на узком экране - столбиком). */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .actions .btn { margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; }
+  .actions .btn.primary { grid-column: 1 / -1; }
+  @media (max-width: 480px) { .actions { grid-template-columns: 1fr; } }
   .btn:disabled { opacity: .5; cursor: default; }
   .server {
     margin-top: 20px;
@@ -651,9 +656,11 @@ function renderHomePage(status) {
       <div class="stat"><b>${status.online && status.day != null ? status.day : '—'}</b><span>игровой день</span></div>
     </div>
 
-    <a class="btn" href="/apply">Подать заявку на игру</a>
-    <a class="btn" href="/client">Установка клиента и моды</a>
-    <a class="btn" href="/backup">Скачать бэкап мира</a>
+    <div class="actions">
+      <a class="btn primary" href="/apply">Подать заявку на игру</a>
+      <a class="btn" href="/client">Установка клиента и моды</a>
+      <a class="btn" href="/backup">Скачать бэкап мира</a>
+    </div>
     <div class="lock">🔒 Для скачивания файлов нужен пароль — спроси у администратора сервера.</div>
 
     <div class="section-title">Как начать играть</div>
