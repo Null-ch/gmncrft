@@ -118,7 +118,7 @@ RCON наружу по-прежнему не открыт. Подавший с �
 | Библиотеки | Fabric API 0.155.3, Balm, Shogi, Cloth Config, Fabric Language Kotlin, Cardinal Components API, GeckoLib, Moonlight Lib, Cristel Lib, Anvian's Lib, Moog's Structure Lib, PrickleMC, MezzConfig, CodxLib, OELib, Mint Lib, Player Animation Library |
 | Структуры и мир | Structory, Dungeons and Taverns, Towns and Towers 1.13.11, Explorations, Explorify, Moog's Voyager/End Structures, Infinity Cave, Starry Skies, StreamsReflowing, The Lost Castle, Exosphere Worldgen Refabricated |
 | Деревни и мобы | Minecraft Comes Alive, Millager, Civillis, Cube Animals, UntitledDuck, Wolf Saddle-Bag, Gamingbarn's Morphs, Alex's Mobs Continued 2.2.2, Flying Unicorns, Silly Goose |
-| Предметы и геймплей | Waystones 26.1.2.13, Artifacts + Trinkets Updated (слоты для шляп и аксессуаров), Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee, Smart Backpacks, Utilities Plus, Hats, Seatify, Rails Revamped, Ultimate Minecarts, Clutter No More |
+| Предметы и геймплей | Waystones 26.1.2.13, Artifacts + Trinkets Updated (слоты для шляп и аксессуаров), Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee, Smart Backpacks, Utilities Plus, Hats, Seatify, Rails Revamped, Ultimate Minecarts |
 | Декор | Macaw's Furniture/Bridges, Farmhouse Decorations, Carved Wood, Simply Cozy, Heraldics, Woven In Time, Assorted Discoveries 3.1.1, Slabbed, The Block Box, Cluttered, Better Fish Tanks |
 | Клиентские (на сервере пропускаются) | Sodium 0.9.2, Iris 1.11.4 (шейдеры), Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames, Traveler's Titles, Mod Menu (нужен Utilities Plus), Enhanced Tooltips, Yumemigusa |
 | Только сервер | EasyWhitelist 1.1.4 — whitelist по нику для офлайн-режима |
@@ -141,22 +141,6 @@ RCON наружу по-прежнему не открыт. Подавший с �
 
 ```bash
 docker compose restart mc link-server   # сервер + пересборка архива для клиента
-```
-
-### Датапак server-fixes
-
-Clutter No More считает доски, полублоки и ступеньки одним предметом и в рецептах тоже
-(его `IngredientMixin`, в конфиге не отключается). Поэтому рецепт «2 полублока вертикально»
-срабатывает на 2 доски и перебивает палки. `datapacks/server-fixes` (подключён через
-`DATAPACKS`, копируется в `world/datapacks`):
-
-- отключает рецепты мозаики на верстаке — Carved Wood (11 пород) и ванильной бамбуковой;
-- добавляет их на распилочный станок Utilities Plus: 1 доска → 1 мозаика.
-
-После изменения `datapacks/`:
-
-```bash
-docker compose up -d mc   # пересоздать контейнер и перезапустить сервер
 ```
 
 ## Шейдеры
