@@ -18,6 +18,8 @@ services:
       # /data/mods каждый старт собирается заново из ./mods - иначе удалённые из mods/
       # jar (в т.ч. старые Forge-моды) остаются в data/mods и роняют Fabric при загрузке.
       REMOVE_OLD_MODS: "TRUE"
+      # server-fixes - правки рецептов, сломанных Clutter No More (см. README).
+      DATAPACKS: "/datapacks/server-fixes"
 
       MEMORY: "${MEMORY:-4G}"
       MOTD: "${MOTD:-A Fabric 26.1.2 Server}"
@@ -48,8 +50,8 @@ services:
     volumes:
       - ./data:/data
       - ./mods:/mods:ro
-      # Конфиги модов из репозитория: образ при старте синхронизирует /config в /data/config.
-      - ./config:/config:ro
+      # Датапаки из репозитория - образ копирует перечисленные в DATAPACKS в world/datapacks.
+      - ./datapacks:/datapacks:ro
       - ./${FABRIC_LAUNCHER_FILE:-fabric-server-mc.26.1.2-loader.0.19.5-launcher.1.1.2.jar}:/fabric-server-launcher.jar:ro
     networks:
       - mc-net
