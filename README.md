@@ -113,12 +113,12 @@ RCON наружу по-прежнему не открыт. Подавший с �
 
 | Группа | Моды |
 |---|---|
-| Библиотеки | Fabric API 0.155.3, Balm, Shogi, Cloth Config, Fabric Language Kotlin, Cardinal Components API, GeckoLib, Moonlight Lib, Cristel Lib, Anvian's Lib, Moog's Structure Lib, PrickleMC, MezzConfig |
-| Структуры и мир | Structory, Dungeons and Taverns, Towns and Towers 1.13.11, Explorations, Explorify, Moog's Voyager/End Structures, Infinity Cave, Starry Skies, StreamsReflowing |
-| Деревни и мобы | Minecraft Comes Alive, Millager, Civillis, Cube Animals, UntitledDuck, Wolf Saddle-Bag, Gamingbarn's Morphs |
-| Предметы и геймплей | Waystones 26.1.2.13, Artifacts, Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee |
-| Декор | Macaw's Furniture/Bridges, Farmhouse Decorations, Carved Wood, Simply Cozy, Heraldics, Woven In Time, Assorted Discoveries 3.1.1, Slabbed |
-| Клиентские (на сервере пропускаются) | Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY + Interactive Foliage, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames |
+| Библиотеки | Fabric API 0.155.3, Balm, Shogi, Cloth Config, Fabric Language Kotlin, Cardinal Components API, GeckoLib, Moonlight Lib, Cristel Lib, Anvian's Lib, Moog's Structure Lib, PrickleMC, MezzConfig, CodxLib, OELib, Mint Lib, Player Animation Library |
+| Структуры и мир | Structory, Dungeons and Taverns, Towns and Towers 1.13.11, Explorations, Explorify, Moog's Voyager/End Structures, Infinity Cave, Starry Skies, StreamsReflowing, The Lost Castle, Exosphere Worldgen Refabricated |
+| Деревни и мобы | Minecraft Comes Alive, Millager, Civillis, Cube Animals, UntitledDuck, Wolf Saddle-Bag, Gamingbarn's Morphs, Alex's Mobs Continued 2.2.2, Flying Unicorns, Silly Goose |
+| Предметы и геймплей | Waystones 26.1.2.13, Artifacts, Comforts, Xerca Tools, Go Fish Rehooked, UsefulFood Reborn, Moog's Glow Up, Camerapture, Chalk, Dreambound 1.1.1, Doorchestra, Krylix, Arrow In The Knee, Smart Backpacks, Utilities Plus, Hats, Seatify, Rails Revamped, Ultimate Minecarts, Clutter No More |
+| Декор | Macaw's Furniture/Bridges, Farmhouse Decorations, Carved Wood, Simply Cozy, Heraldics, Woven In Time, Assorted Discoveries 3.1.1, Slabbed, The Block Box, Cluttered, Better Fish Tanks |
+| Клиентские (на сервере пропускаются) | Xaero's Minimap/World Map, JEI, Enchantment Descriptions, Sound Physics Remastered, SWAY + Interactive Foliage, Swinging Lanterns, Atmospheric Fauna, Imprint, Colored Nicknames, Traveler's Titles, Mod Menu (нужен Utilities Plus), Enhanced Tooltips, Yumemigusa |
 | Только сервер | EasyWhitelist 1.1.4 — whitelist по нику для офлайн-режима |
 
 > Все моды должны работать на Fabric Loader **0.19.2** — такой стоит во встроенной версии
@@ -126,7 +126,12 @@ RCON наружу по-прежнему не открыт. Подавший с �
 > Balm 26.1.2.11+, Dreambound 1.2.0, Assorted Discoveries 3.3.0 требуют loader 0.19.3+.
 > Под 0.19.2 нет ни одной версии у Belt Slot, Echo Pickaxe, Fetzi's Asian Deco, Heirlooms,
 > Magic Vibe Decorations, Naraka, Sulfur, Voxelized Furniture, Signpost, Level10
-> Enchantments — их на сервере нет. При обновлении модов проверяйте
+> Enchantments, Too Many Bows, The Graveyard (Unofficial Port), Torch Toss (и её Konfig),
+> Immersive Aircraft (нужен 0.19.5) — их на сервере нет. Alex's Mobs (Fabric) + Citadel
+> требуют 0.19.3, вместо них стоит Alex's Mobs Continued (Modrinth, без Citadel).
+> Несовместимы между собой (сервер падает при старте): Alex's Mobs ↔ Nycto (миксин Nycto в
+> `PoiTypes`), Smart Backpacks ↔ Sooty Chimneys (Smart Backpacks несёт свои копии классов
+> Forge Config API Port). При обновлении модов проверяйте
 > `depends.fabricloader` в `fabric.mod.json` jar-файла, а также что jar под Fabric (не
 > `-neoforge`/`-forge`) и под 26.1.2 (Towns and Towers 1.13.12 уже только для 26.3).
 
@@ -141,7 +146,9 @@ docker compose restart mc link-server   # сервер + пересборка а
 `caddy` получает HTTPS-сертификат для `LINK_DOMAIN` (A-запись → IP VPS) и проксирует на
 `link-server`:
 
-- `/` — MOTD, версия, адрес, список модов;
+- `/` — MOTD, живой статус через RCON (онлайн/офлайн, игроки, игровой день и время,
+  сложность; кэш 15 с, на странице обновляется раз в 30 с через `/status.json`), версии,
+  адрес (копируется по клику), режим игры, особенности сервера, сворачиваемый список модов;
 - `/apply` — заявка на игру, `/apply/<id>` — её статус;
 - `/backup` — скачивание самого свежего архива из `backups/`;
 - `/client` — инструкция по установке клиента (версии Minecraft/Fabric, T-Launcher и

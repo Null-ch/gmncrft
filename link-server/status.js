@@ -24,9 +24,11 @@ function parseList(reply) {
   return { online: Number(m[1]), max: Number(m[2]), players };
 }
 
-// "The time is 13000" -> число тиков.
+// С 26.1 время - это «часы» мира: "time query time" -> "Clock minecraft:overworld is at
+// 30555 tick(s)", общее число тиков с начала мира (старые "time query day/daytime" с
+// "The time is N" больше не работают: day теперь таймлайн, daytime не существует).
 const parseTime = (reply) => {
-  const m = /The time is (\d+)/i.exec(clean(reply));
+  const m = /(?:is at|time is) (\d+)/i.exec(clean(reply));
   return m ? Number(m[1]) : null;
 };
 
@@ -47,15 +49,11 @@ function createStatusReader(rcon) {
 
   async function fetchStatus() {
     try {
-      const [list, day, daytime, difficulty] = await Promise.all([
-        run('list'),
-        run('time query day'),
-        run('time query daytime'),
-        run('difficulty'),
-      ]);
+      const [list, time, difficulty] = await Promise.all([run('list'), run('time query time'), run('difficulty')]);
       const players = parseList(list);
-      const dayNumber = parseTime(day);
-      const ticks = parseTime(daytime);
+      const ticks = parseTime(time);
+      // 24000 тиков = игровые сутки; день считаем с 1, как в «День 1» у игроков.
+      const dayNumber = ticks != null ? Math.floor(ticks / 24000) + 1 : null;
       const diff = /difficulty is (\w+)/i.exec(clean(difficulty));
       return {
         online: true,
