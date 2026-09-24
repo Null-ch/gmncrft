@@ -48,6 +48,8 @@ services:
     volumes:
       - ./data:/data
       - ./mods:/mods:ro
+      # Конфиги модов из репозитория: образ при старте синхронизирует /config в /data/config.
+      - ./config:/config:ro
       - ./${FABRIC_LAUNCHER_FILE:-fabric-server-mc.26.1.2-loader.0.19.5-launcher.1.1.2.jar}:/fabric-server-launcher.jar:ro
     networks:
       - mc-net
