@@ -22,13 +22,17 @@ services:
       # fdm-fix - заглушка сломанной функции farmhouse_decorations:cleanup_legacy_seats.
       DATAPACKS: "/datapacks/fdm-fix"
 
-      MEMORY: "${MEMORY:-4G}"
+      MEMORY: "${MEMORY:-6G}"
+      # Флаги G1GC от Aikar - короче паузы сборщика мусора на большом модпаке.
+      USE_AIKAR_FLAGS: "true"
+      # Не ждать fsync на каждую запись чанка - меньше подвисаний при генерации мира.
+      SYNC_CHUNK_WRITES: "false"
       MOTD: "${MOTD:-A Fabric 26.1.2 Server}"
       DIFFICULTY: "${DIFFICULTY:-normal}"
       MODE: "${MODE:-survival}"
       MAX_PLAYERS: "${MAX_PLAYERS:-20}"
-      VIEW_DISTANCE: "${VIEW_DISTANCE:-10}"
-      SIMULATION_DISTANCE: "${SIMULATION_DISTANCE:-10}"
+      VIEW_DISTANCE: "${VIEW_DISTANCE:-8}"
+      SIMULATION_DISTANCE: "${SIMULATION_DISTANCE:-6}"
       SPAWN_PROTECTION: "${SPAWN_PROTECTION:-0}"
       ALLOW_NETHER: "${ALLOW_NETHER:-true}"
       PVP: "${PVP:-true}"
