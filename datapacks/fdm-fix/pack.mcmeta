@@ -1,0 +1,9 @@
+{
+  "pack": {
+    "description": "Fix: farmhouse_decorations cleanup_legacy_seats",
+    "pack_format": 15,
+    "supported_formats": [15, 512],
+    "min_format": 15,
+    "max_format": 512
+  }
+}

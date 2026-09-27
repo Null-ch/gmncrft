@@ -604,10 +604,13 @@ function renderStatusInner(status) {
       <div class="status-meta">${players}</div>`;
 }
 
-// Раз в 30 секунд подтягивает свежий статус без перезагрузки страницы.
+// Раз в 30 секунд подтягивает свежий статус без перезагрузки страницы
+// (и блок статуса, и плитки «онлайн» / «игровой день» под ним).
 const STATUS_SCRIPT = `
 (function () {
   var box = document.getElementById('status');
+  var statOnline = document.getElementById('stat-online');
+  var statDay = document.getElementById('stat-day');
   setInterval(function () {
     if (document.hidden) return;
     fetch('/status.json', { cache: 'no-store' })
@@ -615,6 +618,8 @@ const STATUS_SCRIPT = `
       .then(function (data) {
         box.className = 'status-box ' + (data.online ? 'online' : 'offline');
         box.innerHTML = data.html;
+        if (statOnline) statOnline.textContent = data.online ? (data.players != null ? data.players : 0) : '—';
+        if (statDay) statDay.textContent = data.online && data.day != null ? data.day : '—';
       })
       .catch(function () {});
   }, 30000);
@@ -654,8 +659,8 @@ function renderHomePage(status) {
 
     <div class="stats">
       <div class="stat"><b>${mods.length}</b><span>${plural(mods.length, 'мод', 'мода', 'модов')}</span></div>
-      <div class="stat"><b>${status.online ? status.players ?? 0 : '—'}</b><span>онлайн</span></div>
-      <div class="stat"><b>${status.online && status.day != null ? status.day : '—'}</b><span>игровой день</span></div>
+      <div class="stat"><b id="stat-online">${status.online ? status.players ?? 0 : '—'}</b><span>онлайн</span></div>
+      <div class="stat"><b id="stat-day">${status.online && status.day != null ? status.day : '—'}</b><span>игровой день</span></div>
     </div>
 
     <div class="actions">
@@ -931,6 +936,7 @@ const server = http.createServer((req, res) => {
         online: status.online,
         players: status.online ? status.players : null,
         maxPlayers: status.online ? status.maxPlayers : GAME.maxPlayers,
+        day: status.online ? status.day : null,
         html: renderStatusInner(status),
       }),
     );
